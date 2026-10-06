@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import re
+import socket
+import threading
 import time
 import unicodedata
 from datetime import date, datetime
@@ -134,6 +136,34 @@ class TurnRequest(BaseModel):
 app = FastAPI(title="Call Pilot")
 
 
+def discovery_reply(msg: bytes, port: int) -> bytes | None:
+    if msg.strip() == b"CALLPILOT_DISCOVER":
+        return f"CALLPILOT {port}".encode("ascii")
+    return None
+
+
+def _udp_discovery_worker():
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("0.0.0.0", 8002))
+    except OSError as exc:
+        logger.warning("UDP discovery bind failed: %s", exc)
+        return
+    while True:
+        try:
+            data, addr = sock.recvfrom(1024)
+            reply = discovery_reply(data, int(os.environ.get("CALLPILOT_PORT", "8001")))
+            if reply:
+                sock.sendto(reply, addr)
+        except Exception as exc:
+            logger.debug("UDP discovery error: %s", exc)
+
+
+@app.on_event("startup")
+def _start_discovery():
+    threading.Thread(target=_udp_discovery_worker, daemon=True).start()
+
+
 @app.get("/api/status")
 def get_status():
     return {
@@ -259,6 +289,17 @@ def call_turn(sid: str, body: TurnRequest = TurnRequest()):
             res["pdf_url"] = f"/api/bookings/{sid}/pdf"
         res["record"] = mask(record)
     res["record_id"] = record_id
+    return res
+
+
+@app.get("/api/bookings/{session_id}")
+def get_booking(session_id: str):
+    appt = db.get_appointment(session_id)
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    res = dict(appt)
+    res["booking_id"] = f"HB-{appt['id']:04d}"
+    res["pdf_url"] = f"/api/bookings/{session_id}/pdf"
     return res
 
 
