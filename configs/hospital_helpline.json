@@ -1,0 +1,57 @@
+{
+  "id": "hospital_helpline",
+  "business": "CityCare Hospital",
+  "purpose": "book doctor appointments: understand the caller's health problem, suggest the right department, offer an available doctor and time slot, then collect the patient's details",
+  "greeting": "Hello, welcome to the CityCare Hospital appointment helpline. How can I help you today?",
+  "consent_notice": "This call is handled by an AI assistant and is recorded to create your appointment. Department suggestions are not a medical diagnosis. Please use demo details only.",
+  "tone": "warm, calm, reassuring and brief, like a hospital receptionist on the phone",
+  "action": {"type": "appointment", "name": "book_appointment"},
+  "escalation_phrases": ["human", "real person", "receptionist", "talk to someone", "operator"],
+  "escalation_message": "Of course. I'm transferring you to our front desk. Please stay on the line.",
+  "emergency_phrases": ["chest pain", "heart attack", "can't breathe", "cannot breathe", "breathing difficulty", "difficulty breathing", "unconscious", "fainted", "heavy bleeding", "severe bleeding", "stroke", "seizure", "suicide"],
+  "emergency_message": "This sounds like a medical emergency. Please call 108 for an ambulance right now, or go to the nearest emergency room. I'm ending this call so you can get help immediately.",
+  "max_turns": 30,
+  "webhook_url": "",
+  "summary_template": "{patient_name} ({age}, {gender}) - {symptoms}. {department} with {doctor} on {appointment_date} at {appointment_time}, {hospital_branch} branch.",
+  "done_template": "Your appointment is confirmed. Your booking number is {booking_id}. Please come to our {hospital_branch} branch on {appointment_date_spoken} at {appointment_time_spoken}. {doctor} from {department} will see you. You can download your booking slip now. Thank you for calling CityCare Hospital, take care.",
+  "rules": [
+    "First ask what health problem the caller is facing. Then suggest ONE department from the list, say it is a suggestion and not a diagnosis, and ask if they want to proceed with it.",
+    "Only after the caller agrees to a department, say you will check the available doctors and call check_doctors.",
+    "Offer at most 2 slots from the check_doctors result and ask if one works or if they prefer another time. Never offer a doctor, date or time that check_doctors did not return.",
+    "Only after the caller picks a doctor and slot, collect the patient details: name, mobile number, age, gender, the city or area they live in, and the nearest branch.",
+    "Say dates in words, like Thursday 8 October, never as YYYY-MM-DD, and times like 4 PM.",
+    "Never say the appointment is booked or confirmed before submit returns ok; until then say you will book it after confirming the details.",
+    "If the caller describes a medical emergency, call escalate with reason 'medical emergency'."
+  ],
+  "departments": [
+    {"name": "Orthopedics", "treats": "bone, joint, knee, back, neck and shoulder pain, fractures, sprains"},
+    {"name": "Cardiology", "treats": "high blood pressure, palpitations, heart check-ups"},
+    {"name": "ENT", "treats": "ear pain, hearing problems, sinus, sore throat, tonsils"},
+    {"name": "Dermatology", "treats": "skin rashes, acne, allergies, itching, hair loss"},
+    {"name": "Pediatrics", "treats": "any health problem of a child under 14"},
+    {"name": "General Medicine", "treats": "fever, cold, cough, body ache, stomach upset, diabetes, anything unclear"}
+  ],
+  "doctors": [
+    {"name": "Dr. Arjun Mehta", "department": "Orthopedics", "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], "times": ["10:00", "11:30", "16:00"]},
+    {"name": "Dr. Kavita Rao", "department": "Orthopedics", "days": ["Tue", "Thu", "Sat"], "times": ["09:30", "12:00"]},
+    {"name": "Dr. Sameer Khan", "department": "Cardiology", "days": ["Mon", "Wed", "Fri"], "times": ["10:00", "15:00"]},
+    {"name": "Dr. Neha Iyer", "department": "ENT", "days": ["Mon", "Tue", "Thu", "Fri"], "times": ["11:00", "17:00"]},
+    {"name": "Dr. Priya Nair", "department": "Dermatology", "days": ["Wed", "Sat"], "times": ["10:30", "14:30"]},
+    {"name": "Dr. Rohan Gupta", "department": "Pediatrics", "days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "times": ["09:00", "12:30", "16:30"]},
+    {"name": "Dr. Anil Sharma", "department": "General Medicine", "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], "times": ["09:00", "11:00", "18:00"]},
+    {"name": "Dr. Fatima Shaikh", "department": "General Medicine", "days": ["Tue", "Thu", "Sun"], "times": ["10:00", "13:00"]}
+  ],
+  "fields": [
+    {"name": "symptoms", "label": "Health problem", "type": "text", "required": true, "prompt": "Ask what health problem the caller is facing."},
+    {"name": "department", "label": "Department", "type": "enum", "required": true, "after": ["symptoms"], "enum": ["Orthopedics", "Cardiology", "ENT", "Dermatology", "Pediatrics", "General Medicine"], "prompt": "Suggest a department and save it only after the caller agrees."},
+    {"name": "doctor", "label": "Doctor", "type": "enum", "required": true, "after": ["department"], "enum": ["Dr. Arjun Mehta", "Dr. Kavita Rao", "Dr. Sameer Khan", "Dr. Neha Iyer", "Dr. Priya Nair", "Dr. Rohan Gupta", "Dr. Anil Sharma", "Dr. Fatima Shaikh"], "prompt": "The doctor the caller picked from check_doctors."},
+    {"name": "appointment_date", "label": "Appointment date", "type": "date", "required": true, "after": ["doctor"], "prompt": "The date of the slot the caller picked."},
+    {"name": "appointment_time", "label": "Appointment time", "type": "time", "required": true, "after": ["doctor"], "prompt": "The time of the slot the caller picked."},
+    {"name": "patient_name", "label": "Patient name", "type": "text", "required": true, "after": ["appointment_date", "appointment_time"], "prompt": "Ask for the patient's full name."},
+    {"name": "phone", "label": "Mobile number", "type": "phone", "required": true, "after": ["appointment_date", "appointment_time"], "prompt": "Ask for a 10-digit mobile number."},
+    {"name": "age", "label": "Age", "type": "int", "required": true, "min": 0, "max": 120, "after": ["appointment_date", "appointment_time"], "prompt": "Ask for the patient's age in years."},
+    {"name": "gender", "label": "Gender", "type": "enum", "required": true, "enum": ["male", "female", "other"], "after": ["appointment_date", "appointment_time"], "prompt": "Ask for the patient's gender."},
+    {"name": "city_area", "label": "City or area", "type": "text", "required": true, "after": ["appointment_date", "appointment_time"], "prompt": "Ask which city or area the patient lives in."},
+    {"name": "hospital_branch", "label": "Nearest branch", "type": "enum", "required": true, "enum": ["City Centre", "North Campus", "South Campus"], "after": ["appointment_date", "appointment_time"], "prompt": "Ask which branch is nearest to them: City Centre, North Campus or South Campus."}
+  ]
+}

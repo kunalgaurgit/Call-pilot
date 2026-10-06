@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Call Pilot — Supervisor Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container wide">
+    <header>
+      <div class="brand">
+        <h1>Call Pilot Dashboard</h1>
+        <span class="poll-tag">Live (3s poll)</span>
+      </div>
+      <a href="/index.html" class="nav-link">&larr; Call Assistant</a>
+    </header>
+
+    <div class="card">
+      <div class="controls-bar">
+        <div class="filter-group">
+          <label for="business-filter">Business:</label>
+          <select id="business-filter">
+            <option value="">All Businesses</option>
+          </select>
+        </div>
+        <div id="record-count" class="record-count">Loading...</div>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Business</th>
+              <th>Status</th>
+              <th>Summary</th>
+              <th>PDF</th>
+            </tr>
+          </thead>
+          <tbody id="records-table-body">
+            <tr class="empty-row">
+              <td colspan="5">Loading records...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Details View -->
+    <div id="details-section" class="card details-card" style="display: none;">
+      <div class="details-header">
+        <h2 class="details-title">Record Details</h2>
+      </div>
+      <pre id="record-details-pre"></pre>
+    </div>
+  </div>
+
+  <script>
+    let selectedRecordKey = null;
+    let recordsData = [];
+
+    const businessFilter = document.getElementById("business-filter");
+    const recordsTableBody = document.getElementById("records-table-body");
+    const recordCountEl = document.getElementById("record-count");
+    const detailsSection = document.getElementById("details-section");
+    const recordDetailsPre = document.getElementById("record-details-pre");
+
+    // Populate business filter dropdown
+    async function loadConfigs() {
+      try {
+        const res = await fetch("/api/configs");
+        if (res.ok) {
+          const configs = await res.json();
+          configs.forEach(cfg => {
+            const opt = document.createElement("option");
+            opt.value = cfg.id;
+            opt.textContent = cfg.business;
+            businessFilter.appendChild(opt);
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load configs:", err);
+      }
+    }
+
+    // Format ISO string to readable localized date-time
+    function formatTime(isoStr) {
+      if (!isoStr) return "—";
+      try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr;
+        return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      } catch {
+        return isoStr;
+      }
+    }
+
+    // Render table rows strictly using textContent
+    function renderTable(records) {
+      recordsTableBody.innerHTML = "";
+
+      if (!records || records.length === 0) {
+        const row = document.createElement("tr");
+        row.className = "empty-row";
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.textContent = "No records found.";
+        row.appendChild(td);
+        recordsTableBody.appendChild(row);
+        recordCountEl.textContent = "0 records";
+        return;
+      }
+
+      recordCountEl.textContent = records.length + (records.length === 1 ? " record" : " records");
+
+      records.forEach(rec => {
+        const tr = document.createElement("tr");
+        const key = rec.id || rec.session_id;
+
+        if (key && key === selectedRecordKey) {
+          tr.classList.add("selected");
+        }
+
+        // Time
+        const tdTime = document.createElement("td");
+        tdTime.className = "time-cell";
+        tdTime.textContent = formatTime(rec.ended_at || rec.started_at || rec.created_at);
+        tr.appendChild(tdTime);
+
+        // Business
+        const tdBiz = document.createElement("td");
+        tdBiz.className = "biz-cell";
+        tdBiz.textContent = rec.business || rec.business_id || "—";
+        tr.appendChild(tdBiz);
+
+        // Status badge
+        const tdStatus = document.createElement("td");
+        const badge = document.createElement("span");
+        const statusVal = (rec.status || "unknown").toLowerCase();
+        badge.className = "badge badge-" + statusVal;
+        badge.textContent = statusVal;
+        tdStatus.appendChild(badge);
+        tr.appendChild(tdStatus);
+
+        // Summary
+        const tdSummary = document.createElement("td");
+        tdSummary.className = "summary-cell";
+        tdSummary.textContent = rec.summary || "—";
+        tr.appendChild(tdSummary);
+
+        // PDF column
+        const tdPdf = document.createElement("td");
+        tdPdf.className = "pdf-cell";
+        const bookingId = rec.booking_id || (rec.fields && rec.fields.booking_id);
+        if (rec.session_id && bookingId) {
+          const pdfLink = document.createElement("a");
+          pdfLink.href = "/api/bookings/" + encodeURIComponent(rec.session_id) + "/pdf";
+          pdfLink.className = "btn-pdf-small";
+          pdfLink.textContent = "PDF";
+          pdfLink.target = "_blank";
+          pdfLink.setAttribute("download", bookingId + ".pdf");
+          pdfLink.addEventListener("click", (e) => e.stopPropagation());
+          tdPdf.appendChild(pdfLink);
+        } else {
+          tdPdf.textContent = "—";
+        }
+        tr.appendChild(tdPdf);
+
+        // Click row -> show record details
+        tr.addEventListener("click", () => {
+          selectedRecordKey = key;
+          document.querySelectorAll("#records-table-body tr").forEach(r => r.classList.remove("selected"));
+          tr.classList.add("selected");
+          showDetails(rec);
+        });
+
+        recordsTableBody.appendChild(tr);
+      });
+
+      // Maintain selection if already chosen
+      if (selectedRecordKey) {
+        const found = records.find(r => (r.id || r.session_id) === selectedRecordKey);
+        if (found) {
+          showDetails(found);
+        }
+      }
+    }
+
+    function showDetails(record) {
+      detailsSection.style.display = "flex";
+      recordDetailsPre.textContent = JSON.stringify(record, null, 2);
+
+      const bookingId = record.booking_id || (record.fields && record.fields.booking_id);
+      let pdfBtn = document.getElementById("details-pdf-btn");
+      if (record.session_id && bookingId) {
+        if (!pdfBtn) {
+          pdfBtn = document.createElement("a");
+          pdfBtn.id = "details-pdf-btn";
+          pdfBtn.className = "btn-pdf-small";
+          pdfBtn.target = "_blank";
+          pdfBtn.textContent = "Download PDF Slip";
+          detailsSection.querySelector(".details-header").appendChild(pdfBtn);
+        }
+        pdfBtn.href = "/api/bookings/" + encodeURIComponent(record.session_id) + "/pdf";
+        pdfBtn.style.display = "inline-flex";
+      } else if (pdfBtn) {
+        pdfBtn.style.display = "none";
+      }
+    }
+
+    // Fetch records from /api/records
+    async function fetchRecords() {
+      const selectedBiz = businessFilter.value;
+      const url = selectedBiz ? "/api/records?business_id=" + encodeURIComponent(selectedBiz) : "/api/records";
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return;
+        recordsData = await res.json();
+        renderTable(recordsData);
+      } catch (err) {
+        console.error("Failed to load records:", err);
+      }
+    }
+
+    businessFilter.addEventListener("change", () => {
+      selectedRecordKey = null;
+      detailsSection.style.display = "none";
+      fetchRecords();
+    });
+
+    // Initial load
+    loadConfigs().then(fetchRecords);
+
+    // Polling every 3s, skipping while document is hidden
+    setInterval(() => {
+      if (!document.hidden) {
+        fetchRecords();
+      }
+    }, 3000);
+  </script>
+</body>
+</html>

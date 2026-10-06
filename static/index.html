@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Call Pilot — CityCare Hospital Helpline</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <h1>Call Pilot</h1>
+        <div id="mode-banner" class="mode-banner">Loading...</div>
+      </div>
+      <a href="/dashboard.html" class="nav-link">Dashboard &rarr;</a>
+    </header>
+
+    <!-- Pre-call Setup Card -->
+    <div id="setup-view" class="card">
+      <div class="form-group">
+        <label for="business-select">Helpline Service</label>
+        <select id="business-select"></select>
+      </div>
+
+      <label class="checkbox-group">
+        <input type="checkbox" id="offline-mode-check">
+        <span>Offline demo mode</span>
+      </label>
+
+      <div class="consent-box">
+        <strong>Consent &amp; Medical Notice</strong>
+        <span>This call is handled by an AI assistant and recorded to book your appointment. Department suggestions are not a medical diagnosis. In case of emergency, call 108 immediately.</span>
+      </div>
+
+      <button type="button" id="start-call-btn" class="btn-primary btn-call-start">📞 Call Helpline</button>
+    </div>
+
+    <!-- Active Phone-Call Screen Card -->
+    <div id="call-view" class="card">
+      <div class="call-header">
+        <div class="call-meta">
+          <div class="call-meta-row">
+            <span id="call-business-title" class="call-biz-name">CityCare Hospital</span>
+            <span id="call-timer" class="call-timer">00:00</span>
+          </div>
+          <div style="margin-top: 4px;">
+            <span id="status-pill" class="status-pill status-ringing">Ringing</span>
+          </div>
+        </div>
+        <button type="button" id="hangup-btn" class="btn-danger">Hang up</button>
+      </div>
+
+      <!-- Live Captions (Agent & Caller) -->
+      <div class="live-captions-box">
+        <div class="caption-item agent-caption">
+          <div class="caption-speaker">Hospital Assistant</div>
+          <div id="agent-last-caption" class="caption-content">Connecting to helpline...</div>
+        </div>
+        <div class="caption-item caller-caption">
+          <div class="caption-speaker">You (Caller)</div>
+          <div id="caller-last-caption" class="caption-content">—</div>
+        </div>
+      </div>
+
+      <!-- Tap to interrupt button while speaking -->
+      <div style="display: flex; justify-content: center;">
+        <button type="button" id="interrupt-btn" class="btn-interrupt">✋ Tap to interrupt</button>
+      </div>
+
+      <!-- Unsupported browser notice -->
+      <div id="voice-support-msg" class="voice-support-msg" style="display: none;"></div>
+
+      <!-- Scripted hint for fake mode -->
+      <div id="hint-banner" class="hint-banner" style="display: none;">
+        <span class="hint-label">Say next:</span>
+        <span id="hint-text" class="hint-text"></span>
+        <button type="button" id="fill-hint-btn" class="btn-hint">Use</button>
+      </div>
+
+      <!-- Full transcript collapsible -->
+      <details id="transcript-details" class="transcript-details">
+        <summary id="transcript-summary">Show transcript</summary>
+        <div id="transcript" class="transcript"></div>
+      </details>
+
+      <!-- Small fallback text input -->
+      <details id="text-fallback-details" class="text-fallback-details">
+        <summary>Type instead</summary>
+        <form id="text-turn-form" class="text-fallback-form" style="margin-top: 6px;">
+          <input type="text" id="user-input" placeholder="Type your response..." autocomplete="off">
+          <button type="submit" id="send-btn">Send</button>
+        </form>
+      </details>
+    </div>
+
+    <!-- Call Ended Card -->
+    <div id="ended-view" class="card">
+      <h2>Call Completed</h2>
+      <div>
+        <span id="final-status-badge" class="status-badge"></span>
+      </div>
+
+      <!-- Emergency / Escalated Alert in Red -->
+      <div id="emergency-notice" class="emergency-notice" style="display: none;"></div>
+
+      <!-- Confirmed Booking Card with PDF Link -->
+      <div id="booking-card" class="booking-card" style="display: none;">
+        <div class="booking-card-header">
+          <span class="booking-pill">Confirmed</span>
+          <span id="booking-id-val" class="booking-id">—</span>
+        </div>
+        <div class="booking-grid">
+          <div class="booking-field">
+            <span class="booking-label">Doctor</span>
+            <span id="booking-doctor-val" class="booking-val">—</span>
+          </div>
+          <div class="booking-field">
+            <span class="booking-label">Department</span>
+            <span id="booking-dept-val" class="booking-val">—</span>
+          </div>
+          <div class="booking-field">
+            <span class="booking-label">Date</span>
+            <span id="booking-date-val" class="booking-val">—</span>
+          </div>
+          <div class="booking-field">
+            <span class="booking-label">Time</span>
+            <span id="booking-time-val" class="booking-val">—</span>
+          </div>
+          <div class="booking-field booking-field-full">
+            <span class="booking-label">Hospital Branch</span>
+            <span id="booking-branch-val" class="booking-val">—</span>
+          </div>
+        </div>
+        <div class="booking-actions">
+          <a id="pdf-download-btn" href="#" class="btn-pdf-download" target="_blank" download>
+            📄 Download booking PDF
+          </a>
+        </div>
+      </div>
+
+      <p id="final-summary-text" style="font-size: 0.9rem; color: var(--text-muted);"></p>
+      <pre id="record-pre"></pre>
+      <div class="ended-actions">
+        <a href="/dashboard.html" class="btn-nav">View in Dashboard</a>
+        <button type="button" id="restart-btn" class="btn-secondary">Start another call</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let sessionId = null;
+    let hints = [];
+    let hintIndex = 0;
+    let callEnded = false;
+    let recognition = null;
+    let isSpeaking = false;
+    let isListening = false;
+    let currentTurnInFlight = false;
+    let consecutiveMisses = 0;
+    let micBlocked = false; // mic denied/missing: stop auto-listening, typing still works
+    let callStartTime = null;
+    let timerInterval = null;
+    let preferredVoice = null;
+    let activeUtterance = null;
+
+    const modeBanner = document.getElementById("mode-banner");
+    const businessSelect = document.getElementById("business-select");
+    const offlineModeCheck = document.getElementById("offline-mode-check");
+    const startCallBtn = document.getElementById("start-call-btn");
+
+    const setupView = document.getElementById("setup-view");
+    const callView = document.getElementById("call-view");
+    const endedView = document.getElementById("ended-view");
+
+    const callBusinessTitle = document.getElementById("call-business-title");
+    const callTimer = document.getElementById("call-timer");
+    const statusPill = document.getElementById("status-pill");
+    const hangupBtn = document.getElementById("hangup-btn");
+    const interruptBtn = document.getElementById("interrupt-btn");
+    const transcriptEl = document.getElementById("transcript");
+    const transcriptDetails = document.getElementById("transcript-details");
+    const transcriptSummary = document.getElementById("transcript-summary");
+
+    const agentLastCaption = document.getElementById("agent-last-caption");
+    const callerLastCaption = document.getElementById("caller-last-caption");
+
+    const hintBanner = document.getElementById("hint-banner");
+    const hintText = document.getElementById("hint-text");
+    const fillHintBtn = document.getElementById("fill-hint-btn");
+
+    const textFallbackDetails = document.getElementById("text-fallback-details");
+    const textTurnForm = document.getElementById("text-turn-form");
+    const userInput = document.getElementById("user-input");
+    const sendBtn = document.getElementById("send-btn");
+
+    const finalStatusBadge = document.getElementById("final-status-badge");
+    const finalSummaryText = document.getElementById("final-summary-text");
+    const emergencyNotice = document.getElementById("emergency-notice");
+    const bookingCard = document.getElementById("booking-card");
+    const recordPre = document.getElementById("record-pre");
+    const restartBtn = document.getElementById("restart-btn");
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    function setStatus(status) {
+      if (!statusPill) return;
+      statusPill.textContent = status;
+      statusPill.className = "status-pill status-" + status.toLowerCase();
+    }
+
+    function setMode(isGemini) {
+      modeBanner.textContent = isGemini ? "REAL AI" : "OFFLINE DEMO MODE";
+      modeBanner.className = "mode-banner " + (isGemini ? "banner-gemini" : "banner-fake");
+      offlineModeCheck.checked = !isGemini;
+    }
+
+    function startTimer() {
+      callStartTime = Date.now();
+      updateTimerDisplay();
+      clearInterval(timerInterval);
+      timerInterval = setInterval(updateTimerDisplay, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+
+    function updateTimerDisplay() {
+      if (!callStartTime || !callTimer) return;
+      const elapsedSec = Math.floor((Date.now() - callStartTime) / 1000);
+      const mins = String(Math.floor(elapsedSec / 60)).padStart(2, "0");
+      const secs = String(elapsedSec % 60).padStart(2, "0");
+      callTimer.textContent = `${mins}:${secs}`;
+    }
+
+    function loadVoices() {
+      if (!("speechSynthesis" in window)) return;
+      const voices = window.speechSynthesis.getVoices();
+      preferredVoice = voices.find(v => v.lang === "en-IN" || v.lang.replace("_", "-") === "en-IN")
+                    || voices.find(v => v.lang.startsWith("en-IN"))
+                    || voices.find(v => v.lang.startsWith("en"))
+                    || null;
+    }
+
+    if ("speechSynthesis" in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    function showVoiceNotSupported(msg) {
+      const box = document.getElementById("voice-support-msg");
+      if (box) {
+        box.textContent = msg || "Voice recognition is not supported in this browser. Please use text input below.";
+        box.style.display = "block";
+      }
+      if (textFallbackDetails) textFallbackDetails.open = true;
+    }
+
+    function stopListening() {
+      isListening = false;
+      if (recognition) {
+        try {
+          recognition.onend = null;
+          recognition.onerror = null;
+          recognition.onresult = null;
+          recognition.abort();
+        } catch (e) {}
+        recognition = null;
+      }
+    }
+
+    function handleMiss() {
+      if (callEnded || isSpeaking || currentTurnInFlight) return;
+      consecutiveMisses++;
+      if (consecutiveMisses < 2) {
+        startListening();
+      } else if (consecutiveMisses === 2) {
+        speak("Sorry, I can't hear you.");
+      } else if (consecutiveMisses >= 3) {
+        hangupCall();
+      }
+    }
+
+    function startListening() {
+      if (callEnded || isSpeaking || currentTurnInFlight || micBlocked) return;
+      if (!SpeechRecognition) {
+        showVoiceNotSupported();
+        return;
+      }
+
+      stopListening();
+
+      try {
+        recognition = new SpeechRecognition();
+        recognition.lang = "en-IN";
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        let gotResult = false;
+        isListening = true;
+        setStatus("Listening");
+
+        recognition.onstart = () => {
+          isListening = true;
+          setStatus("Listening");
+        };
+
+        recognition.onresult = (event) => {
+          gotResult = true;
+          const transcript = event.results[0]?.[0]?.transcript?.trim();
+          if (transcript) {
+            consecutiveMisses = 0;
+            sendTurn(transcript);
+          } else {
+            handleMiss();
+          }
+        };
+
+        recognition.onerror = (event) => {
+          if (["not-allowed", "service-not-allowed", "audio-capture"].includes(event.error)) {
+            micBlocked = true;
+            showVoiceNotSupported("Microphone access was denied. Please use text input below.");
+          }
+        };
+
+        recognition.onend = () => {
+          isListening = false;
+          if (callEnded || isSpeaking || currentTurnInFlight || micBlocked) return;
+          if (!gotResult) {
+            handleMiss();
+          }
+        };
+
+        recognition.start();
+      } catch (err) {
+        console.warn("Speech recognition failed:", err);
+        isListening = false;
+      }
+    }
+
+    function speak(text, onDone) {
+      stopListening();
+
+      if (!("speechSynthesis" in window)) {
+        if (onDone) onDone();
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+      if (!text) {
+        if (onDone) onDone();
+        return;
+      }
+
+      isSpeaking = true;
+      setStatus("Speaking");
+      if (interruptBtn) interruptBtn.style.display = "inline-flex";
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      if (preferredVoice) utterance.voice = preferredVoice;
+      utterance.lang = "en-IN";
+      activeUtterance = utterance;
+
+      const onEndOrError = () => {
+        if (activeUtterance === utterance) {
+          activeUtterance = null;
+          isSpeaking = false;
+          if (interruptBtn) interruptBtn.style.display = "none";
+          if (!callEnded && !currentTurnInFlight) {
+            setTimeout(() => {
+              if (!callEnded && !isSpeaking && !currentTurnInFlight) {
+                startListening();
+              }
+            }, 300);
+          }
+          if (onDone) onDone();
+        }
+      };
+
+      utterance.onend = onEndOrError;
+      utterance.onerror = onEndOrError;
+
+      window.speechSynthesis.speak(utterance);
+    }
+
+    if (interruptBtn) {
+      interruptBtn.addEventListener("click", () => {
+        if (isSpeaking) {
+          window.speechSynthesis.cancel();
+          activeUtterance = null;
+          isSpeaking = false;
+          interruptBtn.style.display = "none";
+          if (!callEnded && !currentTurnInFlight) {
+            startListening();
+          }
+        }
+      });
+    }
+
+    function updateAgentCaption(text) {
+      if (agentLastCaption) {
+        agentLastCaption.textContent = text || "—";
+      }
+    }
+
+    function updateCallerCaption(text) {
+      if (callerLastCaption) {
+        callerLastCaption.textContent = text || "—";
+      }
+    }
+
+    function appendMessage(role, text) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "msg-wrapper " + (role === "agent" ? "msg-agent" : "msg-customer");
+
+      const sender = document.createElement("div");
+      sender.className = "msg-sender";
+      sender.textContent = role === "agent" ? "Call Pilot" : "You";
+
+      const bubble = document.createElement("div");
+      bubble.className = "msg-bubble";
+      bubble.textContent = text;
+
+      wrapper.appendChild(sender);
+      wrapper.appendChild(bubble);
+      transcriptEl.appendChild(wrapper);
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+
+    function updateHint() {
+      if (hints && hintIndex < hints.length) {
+        hintBanner.style.display = "flex";
+        hintText.textContent = hints[hintIndex];
+      } else {
+        hintBanner.style.display = "none";
+        hintText.textContent = "";
+      }
+    }
+
+    fillHintBtn.addEventListener("click", () => {
+      if (hints && hintIndex < hints.length) {
+        userInput.value = hints[hintIndex];
+        userInput.focus();
+        if (textFallbackDetails) textFallbackDetails.open = true;
+      }
+    });
+
+    if (transcriptDetails && transcriptSummary) {
+      transcriptDetails.addEventListener("toggle", () => {
+        transcriptSummary.textContent = transcriptDetails.open ? "Hide transcript" : "Show transcript";
+      });
+    }
+
+    async function init() {
+      try {
+        const res = await fetch("/api/status");
+        const st = res.ok ? await res.json() : {};
+        setMode(st.mode === "gemini");
+      } catch {
+        setMode(false);
+      }
+
+      try {
+        const res = await fetch("/api/configs");
+        if (res.ok) {
+          const configs = await res.json();
+          businessSelect.innerHTML = "";
+          configs.forEach(cfg => {
+            const opt = document.createElement("option");
+            opt.value = cfg.id;
+            opt.textContent = cfg.business + (cfg.purpose ? " (" + cfg.purpose + ")" : "");
+            if (cfg.id === "hospital_helpline") {
+              opt.selected = true;
+            }
+            businessSelect.appendChild(opt);
+          });
+          const hospitalCfg = configs.find(c => c.id === "hospital_helpline");
+          if (hospitalCfg) {
+            businessSelect.value = "hospital_helpline";
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load configs:", err);
+      }
+
+      if (!SpeechRecognition) {
+        showVoiceNotSupported();
+      }
+    }
+
+    startCallBtn.addEventListener("click", async () => {
+      const configId = businessSelect.value;
+      if (!configId) return;
+
+      startCallBtn.disabled = true;
+      startCallBtn.textContent = "Connecting...";
+      consecutiveMisses = 0;
+
+      try {
+        setupView.style.display = "none";
+        callView.style.display = "flex";
+        setStatus("Ringing");
+        startTimer();
+
+        const res = await fetch("/api/call/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            config_id: configId,
+            use_fake: offlineModeCheck.checked
+          })
+        });
+
+        if (!res.ok) throw new Error("Start call failed: " + res.status);
+
+        const data = await res.json();
+        sessionId = data.session_id;
+        hints = Array.isArray(data.hints) ? data.hints : [];
+        hintIndex = 0;
+        callEnded = false;
+
+        callBusinessTitle.textContent = data.business || "CityCare Hospital";
+
+        if (data.consent_notice) {
+          appendMessage("agent", data.consent_notice);
+        }
+        appendMessage("agent", data.greeting);
+        updateAgentCaption(data.greeting || data.consent_notice);
+
+        const speechText = [data.consent_notice, data.greeting].filter(Boolean).join(" ");
+        speak(speechText);
+
+        updateHint();
+        userInput.focus();
+      } catch (err) {
+        alert("Error starting call: " + err.message);
+        stopTimer();
+        callView.style.display = "none";
+        setupView.style.display = "block";
+        startCallBtn.disabled = false;
+        startCallBtn.textContent = "📞 Call Helpline";
+      }
+    });
+
+    async function sendTurn(text) {
+      if (!sessionId || callEnded) return;
+      const clean = text.trim();
+      if (!clean) return;
+
+      stopListening();
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      isSpeaking = false;
+      if (interruptBtn) interruptBtn.style.display = "none";
+
+      consecutiveMisses = 0;
+      appendMessage("customer", clean);
+      updateCallerCaption(clean);
+      userInput.value = "";
+
+      hintIndex++;
+      updateHint();
+
+      currentTurnInFlight = true;
+      setStatus("Thinking");
+      sendBtn.disabled = true;
+
+      try {
+        const res = await fetch("/api/call/" + encodeURIComponent(sessionId) + "/turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: clean })
+        });
+
+        if (!res.ok) {
+          const errDetail = await res.text();
+          throw new Error(errDetail || "Error " + res.status);
+        }
+
+        const data = await res.json();
+        currentTurnInFlight = false;
+
+        if (data.reply) {
+          appendMessage("agent", data.reply);
+          updateAgentCaption(data.reply);
+          speak(data.reply);
+        }
+
+        if (data.record) {
+          const recordWithPdf = Object.assign({}, data.record);
+          if (data.pdf_url) recordWithPdf.pdf_url = data.pdf_url;
+          if (data.booking_id) recordWithPdf.booking_id = data.booking_id;
+          finishCall(recordWithPdf, data.state);
+        } else if (data.state === "done" || data.state === "escalated" || data.state === "abandoned") {
+          finishCall(null, data.state);
+        }
+      } catch {
+        currentTurnInFlight = false;
+        const errorMsg = "Sorry, I had a technical problem. Could you please repeat that?";
+        appendMessage("agent", errorMsg);
+        updateAgentCaption(errorMsg);
+        speak(errorMsg);
+      } finally {
+        if (!callEnded) {
+          sendBtn.disabled = false;
+        }
+      }
+    }
+
+    textTurnForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      sendTurn(userInput.value);
+    });
+
+    async function hangupCall() {
+      if (!sessionId || callEnded) return;
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      stopListening();
+      try {
+        await fetch("/api/call/" + encodeURIComponent(sessionId) + "/hangup", { method: "POST" });
+      } catch {}
+      finishCall(null, "abandoned");
+    }
+
+    hangupBtn.addEventListener("click", hangupCall);
+
+    window.addEventListener("pagehide", () => {
+      if (sessionId && !callEnded) {
+        navigator.sendBeacon("/api/call/" + encodeURIComponent(sessionId) + "/hangup");
+      }
+    });
+
+    function finishCall(record, state) {
+      callEnded = true;
+      stopTimer();
+      stopListening();
+      if (interruptBtn) interruptBtn.style.display = "none";
+      sendBtn.disabled = true;
+      userInput.disabled = true;
+      hintBanner.style.display = "none";
+
+      callView.style.display = "none";
+      endedView.style.display = "flex";
+
+      const finalStatus = (record && record.status) ? record.status : state || "ended";
+      finalStatusBadge.textContent = "Status: " + finalStatus;
+      finalStatusBadge.className = "status-badge status-" + finalStatus;
+
+      const isEscalatedOrEmergency = finalStatus === "escalated"
+        || (record && (record.escalation_reason || record.status === "escalated"));
+
+      if (isEscalatedOrEmergency) {
+        if (bookingCard) bookingCard.style.display = "none";
+        if (emergencyNotice) {
+          emergencyNotice.style.display = "block";
+          const message = record?.summary || record?.escalation_reason || "Call escalated to emergency or hospital staff.";
+          emergencyNotice.textContent = message;
+        }
+        finalSummaryText.textContent = "";
+      } else {
+        if (emergencyNotice) emergencyNotice.style.display = "none";
+        const bookingId = record?.booking_id || (record?.fields && record.fields.booking_id);
+        if (bookingId && bookingCard) {
+          bookingCard.style.display = "block";
+          const f = (record && record.fields) ? record.fields : (record || {});
+          document.getElementById("booking-id-val").textContent = bookingId;
+          document.getElementById("booking-doctor-val").textContent = f.doctor || "—";
+          document.getElementById("booking-dept-val").textContent = f.department || "—";
+          document.getElementById("booking-date-val").textContent = f.appointment_date || "—";
+          document.getElementById("booking-time-val").textContent = f.appointment_time || "—";
+          document.getElementById("booking-branch-val").textContent = f.hospital_branch || "—";
+
+          const pdfUrl = record?.pdf_url || ("/api/bookings/" + encodeURIComponent(sessionId) + "/pdf");
+          const pdfBtn = document.getElementById("pdf-download-btn");
+          if (pdfBtn) {
+            pdfBtn.href = pdfUrl;
+            pdfBtn.style.display = "inline-flex";
+          }
+          finalSummaryText.textContent = record?.summary || "";
+        } else {
+          if (bookingCard) bookingCard.style.display = "none";
+          finalSummaryText.textContent = (record && record.summary) ? record.summary : ("Call ended (" + finalStatus + ").");
+        }
+      }
+
+      if (record) {
+        recordPre.textContent = JSON.stringify(record, null, 2);
+      } else {
+        recordPre.textContent = JSON.stringify({ session_id: sessionId, status: finalStatus }, null, 2);
+      }
+    }
+
+    restartBtn.addEventListener("click", () => location.reload());
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+{
+  "config_id": "hospital_helpline",
+  "turns": [
+    {
+      "user": "Hi, I want to book an appointment, I have knee pain since a week",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "symptoms": "knee pain since a week"
+              }
+            }
+          ]
+        },
+        {
+          "text": "I'm sorry to hear about your knee pain. Our Orthopedics department specializes in joint and knee issues. Please note this is a suggestion and not a medical diagnosis. Would you like to proceed with Orthopedics?"
+        }
+      ]
+    },
+    {
+      "user": "Yes please",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "department": "Orthopedics"
+              }
+            }
+          ]
+        },
+        {
+          "calls": [
+            {
+              "name": "check_doctors",
+              "args": {
+                "department": "Orthopedics"
+              }
+            }
+          ]
+        },
+        {
+          "text": "{{SLOT_DOCTOR}} is available on {{SLOT_DAY}} at {{SLOT_TIME}}. Shall I book it?"
+        }
+      ]
+    },
+    {
+      "user": "Yes, book it",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "doctor": "{{SLOT_DOCTOR}}",
+                "appointment_date": "{{SLOT_DATE}}",
+                "appointment_time": "{{SLOT_TIME}}"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Great! May I have the patient's full name and 10-digit mobile number?"
+        }
+      ]
+    },
+    {
+      "user": "My name is Rahul Sharma, mobile 98765 43210",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "patient_name": "Rahul Sharma",
+                "phone": "9876543210"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Thank you, Rahul. Could you please share your age and gender?"
+        }
+      ]
+    },
+    {
+      "user": "I am 34, male",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "age": 34,
+                "gender": "male"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Understood. Which city or area do you live in, and which branch is nearest to you: City Centre, North Campus, or South Campus?"
+        }
+      ]
+    },
+    {
+      "user": "I live in Andheri, City Centre branch is nearest",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "city_area": "Andheri",
+                "hospital_branch": "City Centre"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Let me confirm the details: Rahul Sharma, 34, male, mobile 9876543210 from Andheri. Appointment with {{SLOT_DOCTOR}} in Orthopedics on {{SLOT_DAY}} at {{SLOT_TIME}} at City Centre branch. Can you please confirm this booking?"
+        }
+      ]
+    },
+    {
+      "user": "Yes, that's correct",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "submit",
+              "args": {
+                "confirmed": true,
+                "summary": "Rahul Sharma (34, male) - knee pain since a week. Orthopedics with {{SLOT_DOCTOR}} on {{SLOT_DATE}} at {{SLOT_TIME}}, City Centre branch."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

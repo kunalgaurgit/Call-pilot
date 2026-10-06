@@ -1,0 +1,130 @@
+{
+  "config_id": "salon_booking",
+  "turns": [
+    {
+      "user": "I'd like to book a haircut, please.",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "service": "haircut"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Certainly! May I have your full name?"
+        }
+      ]
+    },
+    {
+      "user": "My name is Priya Sharma.",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "customer_name": "Priya Sharma"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Thank you, Priya. What is your 10-digit mobile number?"
+        }
+      ]
+    },
+    {
+      "user": "It is 12345.",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "phone": "12345"
+              }
+            }
+          ]
+        },
+        {
+          "text": "That phone number seems incomplete. Could you please provide a valid 10-digit mobile number?"
+        }
+      ]
+    },
+    {
+      "user": "My number is 9876543210.",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "phone": "9876543210"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Got it. What date and time would you prefer for your haircut?"
+        }
+      ]
+    },
+    {
+      "user": "December 15th 2030 at 2 pm.",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "date": "2030-12-15",
+                "time": "14:00"
+              }
+            }
+          ]
+        },
+        {
+          "text": "I have an appointment for Priya Sharma for a haircut on 2030-12-15 at 14:00, contact number 9876543210. Can you confirm if this is correct?"
+        }
+      ]
+    },
+    {
+      "user": "Actually, make it 5 pm instead.",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "time": "17:00"
+              }
+            }
+          ]
+        },
+        {
+          "text": "I've updated your appointment time to 17:00 on 2030-12-15. Can you please confirm the booking?"
+        }
+      ]
+    },
+    {
+      "user": "Yes, that's correct.",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "submit",
+              "args": {
+                "confirmed": true,
+                "summary": "Priya Sharma booked a haircut on 2030-12-15 at 17:00. Contact: 9876543210."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

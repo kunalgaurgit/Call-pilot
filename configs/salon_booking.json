@@ -1,0 +1,21 @@
+{
+  "id": "salon_booking",
+  "business": "Glow Salon",
+  "purpose": "book salon appointments",
+  "greeting": "Hello, thank you for calling Glow Salon. I'm the virtual assistant and I can book an appointment for you. What would you like to book?",
+  "consent_notice": "This call is handled by an AI assistant and the conversation is recorded to complete your request. Please use demo details only.",
+  "tone": "warm, polite and brief",
+  "action": {"type": "booking", "name": "create_booking"},
+  "escalation_phrases": ["human", "real person", "manager", "staff member", "talk to someone"],
+  "escalation_message": "No problem. I'm passing your request to our salon staff, and someone will call you back shortly. Thank you!",
+  "max_turns": 14,
+  "webhook_url": "",
+  "summary_template": "{customer_name} booked a {service} on {date} at {time}. Contact: {phone}.",
+  "fields": [
+    {"name": "customer_name", "label": "Customer name", "type": "text", "required": true, "prompt": "Ask for the customer's full name."},
+    {"name": "phone", "label": "Mobile number", "type": "phone", "required": true, "prompt": "Ask for a 10-digit Indian mobile number."},
+    {"name": "service", "label": "Service", "type": "enum", "required": true, "enum": ["haircut", "hair colour", "facial", "manicure", "spa"], "prompt": "Ask which service they want."},
+    {"name": "date", "label": "Appointment date", "type": "date", "required": true, "prompt": "Ask for the appointment date; it cannot be in the past."},
+    {"name": "time", "label": "Appointment time", "type": "time", "required": true, "min": "10:00", "max": "20:00", "prompt": "Ask for a time between 10 AM and 8 PM."}
+  ]
+}
