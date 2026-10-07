@@ -201,25 +201,18 @@ def test_response_parsing_empty_candidates(monkeypatch):
     assert reply.raw is None
 
 
-def test_retry_on_429_then_success(monkeypatch):
-    """On APIError 429, chat retries with exponential backoff and succeeds."""
-    call_count = 0
+def test_429_pauses_model_and_falls_back_without_waiting(monkeypatch):
+    """Out of quota: no sleep/retry on that model, next model answers, and later calls skip the paused one."""
+    calls = []
     sleeps = []
-
-    content = types.Content(
-        role="model",
-        parts=[types.Part.from_text(text="Recovered after rate limit")],
-    )
-    ok_resp = types.GenerateContentResponse(
-        candidates=[types.Candidate(content=content)]
-    )
+    content = types.Content(role="model", parts=[types.Part.from_text(text="From the fallback")])
+    ok_resp = types.GenerateContentResponse(candidates=[types.Candidate(content=content)])
 
     class FakeModels:
         def generate_content(self, model, contents, config):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise _make_api_error(429, "Rate limit exceeded")
+            calls.append(model)
+            if model == "primary-model":
+                raise _make_api_error(429, "Quota exceeded")
             return ok_resp
 
     class FakeClient:
@@ -229,16 +222,26 @@ def test_retry_on_429_then_success(monkeypatch):
     monkeypatch.setattr(genai, "Client", FakeClient)
     monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
 
-    gemini = llm.GeminiLLM(api_key="test-key", model="gemini-2.5-flash")
-    reply = gemini.chat("system", [], [])
+    gemini = llm.GeminiLLM(api_key="test-key", model="primary-model,secondary-model")
+    assert gemini.chat("system", [], []).text == "From the fallback"
+    assert calls == ["primary-model", "secondary-model"]
+    assert sleeps == []
+    assert "primary-model" in llm.cooling_models()
 
-    assert reply.text == "Recovered after rate limit"
-    assert call_count == 2
-    assert sleeps == [1]  # 2 ** 0
+    calls.clear()
+    gemini.chat("system", [], [])
+    assert calls == ["secondary-model"]  # paused model skipped
+
+
+def test_retry_after_parsed_from_google_error():
+    assert llm._retry_after_s(Exception("{'@type': '...RetryInfo', 'retryDelay': '65466s'}")) == 65466
+    assert llm._retry_after_s(Exception('"retryDelay": "20.5s"')) == 20.5
+    assert llm._retry_after_s(Exception("no hint")) == 60
+    assert llm._retry_after_s(Exception("'retryDelay': '999999s'")) == 86400
 
 
 def test_retry_exhausted_reraises(monkeypatch):
-    """Exhausting retries on APIError 429 re-raises the exception."""
+    """Single model out of quota: re-raises after one attempt, no sleeping."""
     sleeps = []
 
     class FakeModels:
@@ -255,9 +258,7 @@ def test_retry_exhausted_reraises(monkeypatch):
     gemini = llm.GeminiLLM(api_key="test-key", model="gemini-2.5-flash")
     with pytest.raises(errors.APIError):
         gemini.chat("system", [], [])
-
-    # Per model 2 attempts with 1s sleep between
-    assert sleeps == [1]
+    assert sleeps == []
 
 
 def test_model_fallback_503_twice_then_second_model_answers(monkeypatch):
@@ -293,6 +294,20 @@ def test_model_fallback_503_twice_then_second_model_answers(monkeypatch):
     assert reply.text == "Fallback response"
     assert calls == ["primary-model", "primary-model", "secondary-model"]
     assert sleeps == [1]
+
+    # Busy model is paused: the next turn goes straight to the healthy one.
+    calls.clear()
+    assert gemini.chat("system", [], []).text == "Fallback response"
+    assert calls == ["secondary-model"]
+    assert "primary-model" in llm.cooling_models()
+
+
+def test_make_llm_replaces_legacy_model_list(monkeypatch):
+    monkeypatch.setattr(genai, "Client", lambda **kw: None)
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.5-flash,gemini-3.1-flash-lite")
+    gemini, _ = llm.make_llm("x")
+    assert gemini.models == llm.DEFAULT_MODELS.split(",")
 
 
 def test_model_fallback_non_retryable_400_raises_without_trying_second_model(monkeypatch):
@@ -372,3 +387,28 @@ def test_make_llm_fake(tmp_path, monkeypatch):
     assert isinstance(fake_llm_inst, llm.FakeLLM)
     assert isinstance(hints, list)
     assert len(hints) > 0
+
+
+def test_turn_deadline_skips_requests_that_cannot_finish_in_time(monkeypatch):
+    """A request starts only if its full timeout fits before the turn deadline; otherwise raise without calling Gemini."""
+    calls = []
+
+    class FakeModels:
+        def generate_content(self, model, contents, config):
+            calls.append(model)
+            return types.GenerateContentResponse(candidates=[types.Candidate(
+                content=types.Content(role="model", parts=[types.Part.from_text(text="ok")]))])
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.models = FakeModels()
+
+    monkeypatch.setattr(genai, "Client", FakeClient)
+    gemini = llm.GeminiLLM(api_key="k", model="m1,m2")
+    gemini.deadline = time.monotonic() + gemini.timeout_s + 1
+    assert gemini.chat("s", [], []).text == "ok"
+
+    gemini.deadline = time.monotonic() + gemini.timeout_s - 1
+    with pytest.raises(TimeoutError):
+        gemini.chat("s", [], [])
+    assert calls == ["m1"]

@@ -44,7 +44,9 @@ class FakeLLM:
         return [t["user"] for t in demo["turns"]], FakeLLM(r for t in demo["turns"] for r in t["llm"])
 
 
+import logging
 import os
+import re
 import time
 from google import genai
 from google.genai import errors, types
@@ -52,6 +54,32 @@ from google.genai import errors, types
 import httpx
 
 _TIMEOUT_EXCEPTIONS = (TimeoutError, httpx.TimeoutException)
+
+# Full Flash models only (no Lite), tried in order; out-of-quota ones are skipped until Google's retry time.
+# gemini-3.5-flash is last: its free tier allows only 20 requests/day.
+DEFAULT_MODELS = "gemini-3.6-flash,gemini-3-flash-preview,gemini-3.5-flash"
+# MINIMAL thinking measured ~2x faster per request than the model default with correct tool use (2026-10-07).
+DEFAULT_THINKING = "minimal"
+
+# Written into .env by older run.bat; Lite and 3.5-only, so swap it for the current list.
+_LEGACY_MODELS = "gemini-3.5-flash,gemini-3.1-flash-lite"
+# Pause after a model is overloaded (503/500) or times out; demand spikes usually pass within a minute.
+_BUSY_PAUSE_S = 30
+
+# model -> time.time() when it may be tried again (quota hit or busy). Shared by all calls in this process.
+_COOLDOWN: dict[str, float] = {}
+
+
+def _retry_after_s(e: Exception) -> float:
+    """Google's RetryInfo delay from a 429, else 60 s; capped at a day."""
+    m = re.search(r"retryDelay'?\"?:\s*'?\"?(\d+(?:\.\d+)?)s", str(e))
+    return min(float(m.group(1)), 86400.0) if m else 60.0
+
+
+def cooling_models() -> dict[str, int]:
+    """Models paused (quota or busy), with seconds left."""
+    now = time.time()
+    return {m: int(t - now) for m, t in _COOLDOWN.items() if t > now}
 
 
 def tool_to_declaration(spec: dict) -> types.FunctionDeclaration:
@@ -170,8 +198,12 @@ def _is_retryable(e: Exception) -> bool:
 class GeminiLLM:
     """Gemini LLM adapter using google-genai SDK."""
 
-    def __init__(self, api_key: str, model: str, timeout_s: float = 20, client=None):
+    def __init__(self, api_key: str, model: str, timeout_s: float = 10, client=None, thinking: str | None = None):
         self.api_key = api_key
+        # time.monotonic() by which the current caller turn must be answered (set per turn by app.py); None = no limit.
+        self.deadline: float | None = None
+        # Gemini 3 thinking level (minimal/low/medium/high); None = model default. Lower = faster replies.
+        self.thinking = thinking.strip().upper() if thinking and thinking.strip() else None
         if isinstance(model, str):
             self.models = [m.strip() for m in model.split(",") if m.strip()]
         elif isinstance(model, (list, tuple)):
@@ -195,12 +227,20 @@ class GeminiLLM:
             tools=tool_config,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             temperature=0.3,
+            thinking_config=types.ThinkingConfig(thinking_level=self.thinking) if self.thinking else None,
         )
 
         # ponytail: raw content from model A replayed to fallback model B may lose thought-signature validity; acceptable for MVP.
+        now = time.time()
+        # Skip models out of quota; if every model is paused, try them all anyway (quota may be back).
+        models = [m for m in self.models if _COOLDOWN.get(m, 0) <= now] or list(self.models)
         last_error = None
-        for model in self.models:
+        for model in models:
             for attempt in range(2):
+                # Only start a request that can time out before the turn's deadline (Google rejects deadlines < 10 s,
+                # so the per-request timeout can't shrink; skip instead).
+                if self.deadline and self.deadline - time.monotonic() < self.timeout_s:
+                    raise last_error or TimeoutError("Turn time budget used up")
                 try:
                     response = self.client.models.generate_content(
                         model=model,
@@ -212,8 +252,17 @@ class GeminiLLM:
                     if not _is_retryable(e):
                         raise
                     last_error = e
-                    if attempt == 0:
-                        time.sleep(1)
+                    if getattr(e, "code", None) == 429:
+                        # Out of quota: retrying this model is pointless until Google's retry time.
+                        _COOLDOWN[model] = time.time() + _retry_after_s(e)
+                        logging.warning("Gemini %s out of quota, pausing it for %ds", model, _retry_after_s(e))
+                        break
+                    if attempt == 1 or isinstance(e, _TIMEOUT_EXCEPTIONS):
+                        # Overloaded/slow twice: skip it on the next turns too instead of re-paying the wait.
+                        _COOLDOWN[model] = time.time() + _BUSY_PAUSE_S
+                        logging.warning("Gemini %s busy (%s), pausing it for %ds", model, e, _BUSY_PAUSE_S)
+                        break  # a timeout already cost timeout_s; move to the next model
+                    time.sleep(1)
         if last_error is not None:
             raise last_error
         return LLMReply()
@@ -225,5 +274,7 @@ def make_llm(config_id: str, use_fake: bool = False, subs: dict | None = None):
         hints, llm = FakeLLM.load_demo(config_id, subs=subs)
         return llm, hints
     api_key = os.environ["GEMINI_API_KEY"]
-    model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash,gemini-3.1-flash-lite")
-    return GeminiLLM(api_key=api_key, model=model), []
+    model = os.environ.get("GEMINI_MODEL", DEFAULT_MODELS)
+    if model.replace(" ", "") == _LEGACY_MODELS:
+        model = DEFAULT_MODELS
+    return GeminiLLM(api_key=api_key, model=model, thinking=os.environ.get("GEMINI_THINKING", DEFAULT_THINKING)), []

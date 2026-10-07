@@ -277,8 +277,11 @@
       const labels = { ok: "AI connected", error: "AI error", demo: "Demo mode (no AI)", unknown: "AI: checking…" };
       aiPill.className = "ai-pill ai-" + (ai.state || "unknown");
       aiPill.textContent = labels[ai.state] || labels.unknown;
+      const paused = Object.entries(status.paused_models || {})
+        .map(([m, s]) => m + " paused (busy or out of quota, back in " + (s >= 3600 ? Math.round(s / 3600) + "h" : Math.ceil(s / 60) + "m") + ")");
       aiDetail.textContent = (status.mode === "gemini" ? status.model : "") +
-        (ai.checked_at ? " · last checked " + clock(ai.checked_at) : "");
+        (ai.checked_at ? " · last checked " + clock(ai.checked_at) : "") +
+        (paused.length ? " · " + paused.join(", ") : "");
       aiError.hidden = ai.state !== "error";
       aiError.textContent = ai.error || "";
       const n = status.active_calls || 0;

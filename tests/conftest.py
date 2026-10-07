@@ -14,3 +14,5 @@ def _isolate_call_logs(tmp_path, monkeypatch):
     import app as app_module
     monkeypatch.setattr(app_module, "LOG_DIR", tmp_path / "logs")
     monkeypatch.setattr(app_module, "check_ai", lambda: app_module.AI_HEALTH)
+    import llm
+    llm._COOLDOWN.clear()  # quota pauses must not leak between tests

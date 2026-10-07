@@ -51,7 +51,8 @@ set "GEMINI_KEY="
 set /p "GEMINI_KEY=Paste your Gemini API key and press Enter (or just press Enter for demo mode): "
 if defined GEMINI_KEY (
     > .env echo GEMINI_API_KEY=%GEMINI_KEY%
-    >> .env echo GEMINI_MODEL=gemini-3.5-flash,gemini-3.1-flash-lite
+    >> .env echo GEMINI_MODEL=gemini-3.6-flash,gemini-3-flash-preview,gemini-3.5-flash
+    >> .env echo GEMINI_THINKING=minimal
     >> .env echo LLM_MODE=gemini
     echo Saved. To change the key later, edit .env or delete it and run this again.
 ) else (

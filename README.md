@@ -70,7 +70,7 @@ pip install -r requirements.txt
    - Add your key to `.env`:
      ```env
      GEMINI_API_KEY=your-free-key-from-aistudio.google.com
-     GEMINI_MODEL=gemini-3.5-flash,gemini-3.1-flash-lite
+     GEMINI_MODEL=gemini-3.6-flash,gemini-3-flash-preview,gemini-3.5-flash
      LLM_MODE=gemini
      ```
    - **Offline / No API Key Mode**: If you do not have an API key, set `LLM_MODE=fake` to run offline with scripted demo replays.

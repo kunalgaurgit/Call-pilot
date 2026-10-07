@@ -19,7 +19,11 @@ from fpdf import FPDF
 
 import db
 from agent import Agent, doctor_slots
-from llm import make_llm
+from llm import DEFAULT_MODELS, cooling_models, make_llm
+
+# The Android app gives up on a turn after 25 s; answer (even with an apology) before that.
+# Each Gemini request may take up to 10 s, so 20 s fits a tool call plus the spoken reply.
+TURN_BUDGET_S = 20
 
 logger = logging.getLogger("callpilot")
 
@@ -239,8 +243,9 @@ def _start_discovery():
 def get_status():
     return {
         "mode": get_default_mode(),
-        "model": os.environ.get("GEMINI_MODEL", "gemini-3.5-flash,gemini-3.1-flash-lite"),
+        "model": os.environ.get("GEMINI_MODEL", DEFAULT_MODELS),
         "ai": AI_HEALTH,
+        "paused_models": cooling_models(),
         "active_calls": len(SESSIONS),
     }
 
@@ -340,7 +345,7 @@ def start_call(body: StartRequest, request: Request):
     if not use_fake:
         agent.llm = _TrackedLLM(llm, sid)
     greeting = agent.greet()
-    SESSIONS[sid] = {"agent": agent, "last": time.time()}
+    SESSIONS[sid] = {"agent": agent, "last": time.time(), "lock": threading.Lock()}
     client = request.client.host if request.client else "?"
     log_event(sid, "system", f"Call started - {config.get('business', body.config_id)} ({'demo' if use_fake else 'live AI'})",
               client=client, config_id=body.config_id)
@@ -369,10 +374,18 @@ def call_turn(sid: str, body: TurnRequest = TurnRequest()):
     session["last"] = time.time()
     agent: Agent = session["agent"]
 
-    log_event(sid, "caller", text)
-    t0 = time.perf_counter()
-    out = agent.turn(text)
-    log_event(sid, "agent", out.get("reply", ""), ms=round((time.perf_counter() - t0) * 1000), state=out.get("state"))
+    # One turn at a time per call: a caller repeating themselves after a phone timeout must not
+    # run a second AI loop on the same history.
+    with session["lock"]:
+        if sid not in SESSIONS:
+            raise HTTPException(status_code=404, detail="Session not found")
+        log_event(sid, "caller", text)
+        t0 = time.perf_counter()
+        inner = getattr(agent.llm, "inner", None)
+        if inner is not None:
+            inner.deadline = time.monotonic() + TURN_BUDGET_S
+        out = agent.turn(text)
+        log_event(sid, "agent", out.get("reply", ""), ms=round((time.perf_counter() - t0) * 1000), state=out.get("state"))
     record = out.get("record")
     record_id = None
 
