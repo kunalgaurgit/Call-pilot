@@ -2,6 +2,14 @@
 
 Call Pilot is a configurable, multi-turn voice customer-care agent built as a lightweight, production-grade B.Tech MVP. It conducts natural spoken conversations with customers, collects and validates required business details, confirms accuracy with the caller, executes business actions (bookings, tickets), and securely stores masked structured records.
 
+## Quick start (Windows)
+
+1. Unzip, then double-click **`run.bat`**. The first run installs Python if needed, installs the packages, asks for a free Gemini API key (or press Enter for offline demo mode) and allows the app through the firewall (click **Yes** on the admin prompt).
+2. On the phone, install the APK from the `release` folder (later updates install from the app: Settings → Check for updates).
+3. Put the phone on the same Wi-Fi as the PC (or on the PC's hotspot) and tap the green call button. Watch calls live at `http://127.0.0.1:8001/dashboard.html`.
+
+After the first run, `run.bat` just starts the server. Keep its window open while using the app.
+
 ---
 
 ## Key Features
