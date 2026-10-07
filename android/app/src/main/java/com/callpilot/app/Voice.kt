@@ -100,24 +100,30 @@ class Voice(private val ctx: Context) {
         } catch (_: Exception) {}
     }
 
-    fun listen(onText: (String) -> Unit, onMiss: () -> Unit, onFatal: (String) -> Unit) {
+    fun listen(
+        onText: (String) -> Unit,
+        onMiss: () -> Unit,
+        onFatal: (String) -> Unit,
+        onLevel: (Float) -> Unit = {},
+        onPartial: (String) -> Unit = {}
+    ) {
         mainHandler.post {
             if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
                 onFatal("Speech recognition not available on this phone")
                 return@post
             }
-            stopListening()
+            destroyRecognizer()
             val r = SpeechRecognizer.createSpeechRecognizer(ctx)
             recognizer = r
             r.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {}
                 override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onRmsChanged(rmsdB: Float) = onLevel(rmsdB)
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
 
                 override fun onError(error: Int) {
-                    stopListening()
+                    destroyRecognizer()
                     when (error) {
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
                             onFatal("Microphone permission denied")
@@ -133,7 +139,7 @@ class Voice(private val ctx: Context) {
                 }
 
                 override fun onResults(results: Bundle?) {
-                    stopListening()
+                    destroyRecognizer()
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull()?.trim()
                     if (!text.isNullOrEmpty()) {
@@ -143,7 +149,10 @@ class Voice(private val ctx: Context) {
                     }
                 }
 
-                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onPartialResults(partialResults: Bundle?) {
+                    partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let(onPartial)
+                }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
 
@@ -151,6 +160,7 @@ class Voice(private val ctx: Context) {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             }
             try {
                 r.startListening(intent)
@@ -161,14 +171,18 @@ class Voice(private val ctx: Context) {
     }
 
     fun stopListening() {
-        mainHandler.post {
-            try {
-                recognizer?.stopListening()
-                recognizer?.cancel()
-                recognizer?.destroy()
-            } catch (_: Exception) {}
-            recognizer = null
-        }
+        mainHandler.post { destroyRecognizer() }
+    }
+
+    // Main thread only. Must run synchronously inside listen(): a posted stopListening() would
+    // land after the new recognizer is assigned and silently destroy it (call stuck on "Listening").
+    private fun destroyRecognizer() {
+        try {
+            recognizer?.stopListening()
+            recognizer?.cancel()
+            recognizer?.destroy()
+        } catch (_: Exception) {}
+        recognizer = null
     }
 
     fun setSpeaker(on: Boolean) {

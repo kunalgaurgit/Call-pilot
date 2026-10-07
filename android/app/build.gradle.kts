@@ -19,8 +19,8 @@ android {
         applicationId = "com.callpilot.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
     }
 
     signingConfigs {
@@ -46,6 +46,14 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
 }
+
+// Every release build is also copied to <repo>/release/CallPilot-<version>.apk
+val copyReleaseApk by tasks.registering(Copy::class) {
+    from(layout.buildDirectory.dir("outputs/apk/release")) { include("*.apk") }
+    into(rootProject.file("../release"))
+    rename { "CallPilot-${android.defaultConfig.versionName}.apk" }
+}
+tasks.matching { it.name == "assembleRelease" }.configureEach { finalizedBy(copyReleaseApk) }
 
 dependencies {
     implementation(libs.androidx.core.ktx)

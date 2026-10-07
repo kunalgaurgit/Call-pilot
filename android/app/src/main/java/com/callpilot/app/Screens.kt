@@ -2,6 +2,7 @@ package com.callpilot.app
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,7 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
@@ -286,6 +289,18 @@ fun InCallScreen(viewModel: CallViewModel) {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
+                Spacer(modifier = Modifier.height(16.dp))
+                val waveColor = if (viewModel.callStatus == "Listening") Color(0xFF16A34A) else MaterialTheme.colorScheme.surfaceVariant
+                val levels = viewModel.micLevels
+                Canvas(modifier = Modifier.width(220.dp).height(48.dp)) {
+                    val step = size.width / levels.size
+                    val stroke = step * 0.6f
+                    levels.forEachIndexed { i, level ->
+                        val half = maxOf(stroke / 2, level * size.height / 2)
+                        val x = step * i + step / 2
+                        drawLine(waveColor, Offset(x, center.y - half), Offset(x, center.y + half), stroke, StrokeCap.Round)
+                    }
+                }
             }
 
             Column(

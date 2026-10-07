@@ -20,6 +20,8 @@ import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 
+private val FLAT_LEVELS = List(30) { 0f }
+
 enum class Screen {
     DIALER,
     IN_CALL,
@@ -50,6 +52,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     var callStatus by mutableStateOf("Connecting")
     var agentLine by mutableStateOf("")
     var callerLine by mutableStateOf("")
+    /** Last ~1.5 s of mic loudness (0..1), newest last; drives the in-call waveform. */
+    var micLevels by mutableStateOf(FLAT_LEVELS)
     var seconds by mutableIntStateOf(0)
     var muted by mutableStateOf(false)
     var speaker by mutableStateOf(false)
@@ -206,17 +210,23 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     private fun startListening() {
         if (screen != Screen.IN_CALL || muted) return
         callStatus = "Listening"
+        micLevels = FLAT_LEVELS
         voice.listen(
             onText = { text ->
                 missCount = 0
+                micLevels = FLAT_LEVELS
                 onCallerText(text)
             },
             onMiss = {
+                micLevels = FLAT_LEVELS
                 onSpeechMiss()
             },
             onFatal = { msg ->
                 endCallInternal(msg)
-            }
+            },
+            // SpeechRecognizer RMS is roughly -2..10 dB
+            onLevel = { rms -> micLevels = micLevels.drop(1) + ((rms + 2f) / 12f).coerceIn(0f, 1f) },
+            onPartial = { text -> callerLine = text }
         )
     }
 
