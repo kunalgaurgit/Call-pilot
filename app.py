@@ -7,10 +7,11 @@ import socket
 import threading
 import time
 import unicodedata
+from collections import deque
 from datetime import date, datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
@@ -84,6 +85,7 @@ def _sweep_idle():
                 agent.hangup()
                 _finish(agent, agent.config)
             SESSIONS.pop(sid, None)
+            log_event(sid, "system", "Call timed out (15 min idle)")
 
 
 _PHONE_RE = re.compile(r"(?<!\d)(?:\d[\s-]*){9,}\d(?!\d)")
@@ -121,6 +123,74 @@ def mask(record: dict | None) -> dict | None:
             if isinstance(entry, dict) and isinstance(entry.get("text"), str):
                 entry["text"] = _mask_text(entry["text"])
     return rec
+
+
+LOG_DIR = Path(__file__).parent / "logs"
+# ponytail: in-memory feed of the last 1000 events, lost on restart; the JSONL files are the durable copy
+LIVE: deque = deque(maxlen=1000)
+_live_lock = threading.Lock()
+_live_seq = 0
+AI_HEALTH = {"state": "unknown", "error": "", "checked_at": None}
+
+
+def _now_iso() -> str:
+    return datetime.now().astimezone().isoformat(timespec="milliseconds")
+
+
+def log_event(sid: str | None, role: str, text: str, **extra) -> None:
+    """Live feed + logs/calls-YYYY-MM-DD.jsonl. Roles: system, caller, agent, tool, error."""
+    global _live_seq
+    ev = {"ts": _now_iso(), "sid": sid, "role": role, "text": _mask_text(text), **extra}
+    with _live_lock:
+        _live_seq += 1
+        ev["seq"] = _live_seq
+        LIVE.append(ev)
+        try:
+            LOG_DIR.mkdir(exist_ok=True)
+            with open(LOG_DIR / f"calls-{date.today().isoformat()}.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            logger.warning("Call log write failed: %s", exc)
+
+
+def _set_ai(state: str, error: str = "") -> None:
+    AI_HEALTH.update(state=state, error=error, checked_at=_now_iso())
+
+
+class _TrackedLLM:
+    """Wraps the live LLM: records AI health and logs tool calls / errors per call."""
+
+    def __init__(self, inner, sid: str | None):
+        self.inner, self.sid = inner, sid
+
+    def chat(self, *args, **kwargs):
+        t0 = time.perf_counter()
+        try:
+            r = self.inner.chat(*args, **kwargs)
+        except Exception as exc:
+            err = f"{type(exc).__name__}: {exc}"[:500]
+            _set_ai("error", err)
+            if self.sid:
+                log_event(self.sid, "error", err, ms=round((time.perf_counter() - t0) * 1000))
+            raise
+        _set_ai("ok")
+        if self.sid:
+            for call in r.calls or []:
+                log_event(self.sid, "tool", f"{call.get('name')} {json.dumps(call.get('args') or {}, ensure_ascii=False)}")
+        return r
+
+
+def check_ai() -> dict:
+    """One tiny Gemini request to confirm the key and model work."""
+    if get_default_mode() != "gemini":
+        _set_ai("demo")
+        return AI_HEALTH
+    try:
+        llm, _ = make_llm("", use_fake=False)
+        _TrackedLLM(llm, None).chat("Reply with the single word OK.", [{"role": "user", "text": "ping"}])
+    except Exception as exc:
+        logger.warning("AI health check failed: %s", exc)
+    return AI_HEALTH
 
 
 class StartRequest(BaseModel):
@@ -162,6 +232,7 @@ def _udp_discovery_worker():
 @app.on_event("startup")
 def _start_discovery():
     threading.Thread(target=_udp_discovery_worker, daemon=True).start()
+    threading.Thread(target=check_ai, daemon=True).start()
 
 
 @app.get("/api/status")
@@ -169,7 +240,23 @@ def get_status():
     return {
         "mode": get_default_mode(),
         "model": os.environ.get("GEMINI_MODEL", "gemini-3.5-flash,gemini-3.1-flash-lite"),
+        "ai": AI_HEALTH,
+        "active_calls": len(SESSIONS),
     }
+
+
+@app.post("/api/ai/check")
+def recheck_ai():
+    return check_ai()
+
+
+@app.get("/api/live")
+def live_events(after: int = 0):
+    with _live_lock:
+        if after > _live_seq:  # server restarted since the client's last poll
+            after = 0
+        events = [e for e in LIVE if e["seq"] > after]
+    return {"events": [dict(e) for e in events], "active": list(SESSIONS.keys())}
 
 
 @app.get("/api/configs")
@@ -229,7 +316,7 @@ def booking_pdf(appt: dict, hospital: str) -> bytes:
 
 
 @app.post("/api/call/start")
-def start_call(body: StartRequest):
+def start_call(body: StartRequest, request: Request):
     _sweep_idle()
     if body.config_id not in CONFIGS:
         raise HTTPException(status_code=404, detail="Unknown config")
@@ -249,9 +336,15 @@ def start_call(body: StartRequest):
     llm, hints = make_llm(body.config_id, use_fake=use_fake, subs=subs)
 
     agent = Agent(config=config, llm=llm, session_id=body.session_id, book=_book, taken=db.taken_slots)
-    greeting = agent.greet()
     sid = agent.session_id
+    if not use_fake:
+        agent.llm = _TrackedLLM(llm, sid)
+    greeting = agent.greet()
     SESSIONS[sid] = {"agent": agent, "last": time.time()}
+    client = request.client.host if request.client else "?"
+    log_event(sid, "system", f"Call started - {config.get('business', body.config_id)} ({'demo' if use_fake else 'live AI'})",
+              client=client, config_id=body.config_id)
+    log_event(sid, "agent", greeting)
 
     return {
         "session_id": sid,
@@ -276,7 +369,10 @@ def call_turn(sid: str, body: TurnRequest = TurnRequest()):
     session["last"] = time.time()
     agent: Agent = session["agent"]
 
+    log_event(sid, "caller", text)
+    t0 = time.perf_counter()
     out = agent.turn(text)
+    log_event(sid, "agent", out.get("reply", ""), ms=round((time.perf_counter() - t0) * 1000), state=out.get("state"))
     record = out.get("record")
     record_id = None
 
@@ -284,6 +380,8 @@ def call_turn(sid: str, body: TurnRequest = TurnRequest()):
     if record:
         record_id = _finish(agent, agent.config)
         SESSIONS.pop(sid, None)
+        log_event(sid, "system", f"Call ended - {record.get('status', 'done')}"
+                  + (f", booking {record['booking_id']}" if record.get("booking_id") else ""))
         if "booking_id" in record:
             res["booking_id"] = record["booking_id"]
             res["pdf_url"] = f"/api/bookings/{sid}/pdf"
@@ -325,6 +423,7 @@ def hangup(sid: str):
         if agent:
             agent.hangup()
             _finish(agent, agent.config)
+        log_event(sid, "system", "Caller hung up")
     return {"ok": True}
 
 

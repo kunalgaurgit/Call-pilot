@@ -16,6 +16,22 @@
       <a href="/index.html" class="nav-link">&larr; Call Assistant</a>
     </header>
 
+    <div class="card live-card">
+      <div class="controls-bar">
+        <div class="ai-status">
+          <span id="ai-pill" class="ai-pill ai-unknown">AI: checking…</span>
+          <span id="ai-detail" class="ai-detail"></span>
+          <button id="ai-recheck" class="btn-recheck" type="button">Re-check</button>
+        </div>
+        <div id="live-count" class="record-count">0 active calls</div>
+      </div>
+      <div id="ai-error" class="ai-error" hidden></div>
+      <div id="live-feed" class="live-feed">
+        <div class="live-empty">No calls yet. Conversations appear here live, with timestamps.</div>
+      </div>
+      <div class="live-foot">Full logs with millisecond timestamps: <code>logs/calls-YYYY-MM-DD.jsonl</code></div>
+    </div>
+
     <div class="card">
       <div class="controls-bar">
         <div class="filter-group">
@@ -239,6 +255,131 @@
         fetchRecords();
       }
     }, 3000);
+
+    // ---- AI status + live conversations ----
+    const aiPill = document.getElementById("ai-pill");
+    const aiDetail = document.getElementById("ai-detail");
+    const aiError = document.getElementById("ai-error");
+    const liveFeed = document.getElementById("live-feed");
+    const liveCount = document.getElementById("live-count");
+    const ROLE_LABEL = { caller: "Caller", agent: "Agent", tool: "Tool", error: "Error", system: "System" };
+    const calls = new Map(); // sid -> {events: [], el}
+    let lastSeq = 0;
+    let activeSids = new Set();
+
+    function clock(iso) {
+      const d = new Date(iso);
+      return isNaN(d) ? iso : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+
+    function renderAi(status) {
+      const ai = status.ai || {};
+      const labels = { ok: "AI connected", error: "AI error", demo: "Demo mode (no AI)", unknown: "AI: checking…" };
+      aiPill.className = "ai-pill ai-" + (ai.state || "unknown");
+      aiPill.textContent = labels[ai.state] || labels.unknown;
+      aiDetail.textContent = (status.mode === "gemini" ? status.model : "") +
+        (ai.checked_at ? " · last checked " + clock(ai.checked_at) : "");
+      aiError.hidden = ai.state !== "error";
+      aiError.textContent = ai.error || "";
+      const n = status.active_calls || 0;
+      liveCount.textContent = n + (n === 1 ? " active call" : " active calls");
+    }
+
+    async function fetchStatus() {
+      try {
+        const res = await fetch("/api/status");
+        if (res.ok) renderAi(await res.json());
+      } catch (err) {
+        aiPill.className = "ai-pill ai-error";
+        aiPill.textContent = "Server unreachable";
+      }
+    }
+
+    document.getElementById("ai-recheck").addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      try { await fetch("/api/ai/check", { method: "POST" }); } catch {}
+      await fetchStatus();
+      e.target.disabled = false;
+    });
+
+    function callCard(sid) {
+      let call = calls.get(sid);
+      if (call) return call;
+      const el = document.createElement("div");
+      el.className = "live-call";
+      const head = document.createElement("div");
+      head.className = "live-call-head";
+      const title = document.createElement("span");
+      title.className = "live-call-title";
+      const state = document.createElement("span");
+      state.className = "live-call-state";
+      head.append(title, state);
+      const body = document.createElement("div");
+      body.className = "live-call-body";
+      el.append(head, body);
+      call = { el, title, state, body, started: null };
+      calls.set(sid, call);
+      return call;
+    }
+
+    function addEvent(ev) {
+      const sid = ev.sid || "server";
+      const call = callCard(sid);
+      if (!call.started) {
+        call.started = ev.ts;
+        call.title.textContent = "Call " + sid.slice(0, 6) + " · " + clock(ev.ts) + (ev.client ? " · " + ev.client : "");
+      }
+      const row = document.createElement("div");
+      row.className = "live-msg live-" + ev.role;
+      const time = document.createElement("span");
+      time.className = "live-time";
+      time.textContent = clock(ev.ts);
+      const who = document.createElement("span");
+      who.className = "live-who";
+      who.textContent = ROLE_LABEL[ev.role] || ev.role;
+      const text = document.createElement("span");
+      text.className = "live-text";
+      text.textContent = ev.text + (ev.ms != null && ev.role === "agent" ? "  (" + (ev.ms / 1000).toFixed(1) + "s)" : "");
+      row.append(time, who, text);
+      call.body.appendChild(row);
+      call.body.scrollTop = call.body.scrollHeight;
+      liveFeed.prepend(call.el); // most recently active call on top
+    }
+
+    async function fetchLive() {
+      try {
+        const res = await fetch("/api/live?after=" + lastSeq);
+        if (!res.ok) return;
+        const data = await res.json();
+        const events = data.events || [];
+        if (events.length && events[0].seq <= lastSeq) { // server restarted: start over
+          calls.clear();
+          liveFeed.innerHTML = "";
+        }
+        if (events.length) {
+          liveFeed.querySelector(".live-empty")?.remove();
+          events.forEach(addEvent);
+          lastSeq = events[events.length - 1].seq;
+        }
+        activeSids = new Set(data.active || []);
+        calls.forEach((call, sid) => {
+          const live = activeSids.has(sid);
+          call.state.textContent = live ? "live" : "ended";
+          call.el.classList.toggle("is-live", live);
+        });
+      } catch (err) {
+        console.error("Failed to load live feed:", err);
+      }
+    }
+
+    fetchStatus();
+    fetchLive();
+    setInterval(() => {
+      if (!document.hidden) {
+        fetchLive();
+        fetchStatus();
+      }
+    }, 1000);
   </script>
 </body>
 </html>

@@ -1,0 +1,21 @@
+#!/bin/sh
+# Refuse commits that would leak secrets (API keys, signing keys).
+# Enabled per clone with: git config core.hooksPath .githooks
+# Never prints the matched text, so the key doesn't end up in terminal logs either.
+
+files=$(git diff --cached --name-only --diff-filter=ACMR)
+
+bad=$(printf '%s\n' "$files" | grep -E '(^|/)(\.env(\..+)?|keystore\.properties|.+\.(jks|keystore))$' | grep -v '\.env\.example$')
+if [ -n "$bad" ]; then
+    echo "pre-commit: blocked - these files hold secrets and must not be committed:"
+    printf '  %s\n' $bad
+    echo "Unstage with: git restore --staged <file>"
+    exit 1
+fi
+
+# Google API keys, or GEMINI_API_KEY set to anything but the .env.example placeholder
+if git diff --cached -U0 --diff-filter=ACMR | grep -E '^\+' | grep -v 'your-free-key'     | grep -qE 'AIza[0-9A-Za-z_-]{35}|GEMINI_API_KEY *= *["'"'"']?[A-Za-z0-9._-]{16,}'; then
+    echo "pre-commit: blocked - a staged change looks like it contains an API key."
+    echo "Keep keys in .env (git-ignored). If this is a false alarm: git commit --no-verify"
+    exit 1
+fi

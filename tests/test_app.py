@@ -308,3 +308,18 @@ def test_records_masked_escalation_reason(client):
     assert data["fields"]["phone"] == "******3210"
     assert data["summary"] == "Escalated for ******3210"
     assert data["escalation_reason"] == "customer ******3210 asked for human"
+
+
+def test_live_feed_and_call_log(client, tmp_path):
+    after = client.get("/api/live").json()["events"]
+    after = after[-1]["seq"] if after else 0
+    sid = client.post("/api/call/start", json={"config_id": "salon_booking", "use_fake": True}).json()["session_id"]
+    client.post(f"/api/call/{sid}/turn", json={"text": "Hi, call me on 9876543210"})
+    data = client.get(f"/api/live?after={after}").json()
+    mine = [e for e in data["events"] if e["sid"] == sid]
+    assert [e["role"] for e in mine[:4]] == ["system", "agent", "caller", "agent"]
+    assert all(e["ts"] for e in mine)
+    assert "9876543210" not in mine[2]["text"]  # phone numbers masked in feed and log
+    assert sid in data["active"]
+    logged = "".join(f.read_text(encoding="utf-8") for f in (tmp_path / "logs").glob("calls-*.jsonl"))
+    assert sid in logged and "9876543210" not in logged

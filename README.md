@@ -64,6 +64,10 @@ pip install -r requirements.txt
      LLM_MODE=gemini
      ```
    - **Offline / No API Key Mode**: If you do not have an API key, set `LLM_MODE=fake` to run offline with scripted demo replays.
+3. Turn on the secret guard (once per clone). It blocks commits containing `.env`, keystores or API keys, so a key can't leak to GitHub and get auto-revoked:
+   ```bash
+   git config core.hooksPath .githooks
+   ```
 
 ---
 
