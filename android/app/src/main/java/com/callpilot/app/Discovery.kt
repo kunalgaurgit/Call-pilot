@@ -3,6 +3,9 @@ package com.callpilot.app
 import android.content.Context
 import android.net.ConnectivityManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -52,6 +55,7 @@ suspend fun findServer(ctx: Context, lastKnown: String?): String? = withContext(
 
     // 3. UDP broadcast to 255.255.255.255 and directed broadcast of active network
     val targets = mutableListOf<InetAddress>()
+    val localV4 = mutableListOf<ByteArray>()
     try {
         targets.add(InetAddress.getByName("255.255.255.255"))
     } catch (_: Exception) {}
@@ -65,6 +69,7 @@ suspend fun findServer(ctx: Context, lastKnown: String?): String? = withContext(
             val prefix = linkAddr.prefixLength
             if (addr is Inet4Address && prefix in 1..31) {
                 val raw = addr.address
+                localV4.add(raw)
                 val mask = (-1L shl (32 - prefix)).toInt()
                 val bcast = ByteArray(4)
                 for (i in 0..3) {
@@ -115,6 +120,13 @@ suspend fun findServer(ctx: Context, lastKnown: String?): String? = withContext(
         }
     } catch (_: Exception) {}
 
-    // 4. Server not found
-    null
+    // 4. Many routers drop Wi-Fi broadcasts: probe every host of our /24 directly
+    // ponytail: only the /24 around our IP, wider subnets would need a smarter scan
+    val hosts = localV4.flatMap { raw ->
+        val p = "${raw[0].toInt() and 0xFF}.${raw[1].toInt() and 0xFF}.${raw[2].toInt() and 0xFF}"
+        (1..254).map { "http://$p.$it:8001" }
+    }.distinct()
+    coroutineScope {
+        hosts.map { url -> async { url.takeIf { ping(it, 500) } } }.awaitAll().firstOrNull { it != null }
+    }
 }

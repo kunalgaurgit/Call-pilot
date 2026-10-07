@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import java.net.URL
 import java.time.LocalDate
 import java.time.format.TextStyle
@@ -742,6 +743,38 @@ fun SettingsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
                 ) {
                     Text("Save")
                 }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            var updateMsg by remember { mutableStateOf("Version ${BuildConfig.VERSION_NAME}") }
+            var updateUrl by remember { mutableStateOf<String?>(null) }
+
+            Text(updateMsg, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    val url = updateUrl
+                    if (url != null) {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        return@OutlinedButton
+                    }
+                    updateMsg = "Checking for updates..."
+                    scope.launch {
+                        updateMsg = try {
+                            val found = checkForUpdate()
+                            updateUrl = found?.second
+                            if (found == null) "Up to date (${BuildConfig.VERSION_NAME})" else "Version ${found.first} available"
+                        } catch (e: Exception) {
+                            "Update check failed - no internet?"
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (updateUrl != null) "Download update" else "Check for updates")
             }
         }
     }
