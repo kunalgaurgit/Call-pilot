@@ -10,6 +10,8 @@ Call Pilot is a configurable, multi-turn voice customer-care agent built as a li
 
 After the first run, `run.bat` just starts the server. Keep its window open while using the app.
 
+To get the latest version, close `run.bat` and double-click **`update.bat`**. It downloads the newest code from GitHub and keeps your `.env`, bookings and logs.
+
 ---
 
 ## Key Features

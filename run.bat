@@ -24,8 +24,14 @@ pause
 exit /b 1
 :python_ok
 
-rem ---- 2. Python packages (quick when already installed) ----
-echo Checking Python packages...
+rem ---- 1b. Already running? Stop the old server and its run.bat window, then start fresh ----
+rem Only touches a process on our port whose command line is "uvicorn app:app"; walks up to the run.bat cmd window.
+powershell -NoProfile -Command "$ids = (Get-NetTCPConnection -LocalPort %CALLPILOT_PORT% -State Listen -ErrorAction SilentlyContinue).OwningProcess | Select-Object -Unique; foreach ($id in $ids) { $p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $id); if ($p.CommandLine -notmatch 'uvicorn' -or $p.CommandLine -notmatch 'app:app') { continue }; $kill = $p; $up = $p; foreach ($i in 1..3) { $up = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $up.ParentProcessId); if (-not $up) { break }; if ($up.Name -eq 'cmd.exe' -and $up.CommandLine -match 'run\.bat') { $kill = $up; break } }; taskkill /pid $kill.ProcessId /t /f | Out-Null; Write-Host 'Stopped the Call Pilot server that was already running - restarting it.' }"
+rem Give Windows a moment to free the ports
+ping -n 3 127.0.0.1 >nul
+
+rem ---- 2. Python packages: installs anything new in requirements.txt (e.g. after update.bat); ~2 s when nothing changed ----
+echo Checking for new or updated Python packages...
 python -m pip install -q --disable-pip-version-check -r requirements.txt
 if errorlevel 1 (
     echo Installing packages failed - check the internet connection and run this again.
@@ -76,6 +82,6 @@ echo  Keep this window open while using the app. Close it to stop.
 echo ================================================================
 echo.
 
-start "" /b cmd /c "timeout /t 3 >nul & start "" http://127.0.0.1:%CALLPILOT_PORT%"
+start "" /b cmd /c "ping -n 4 127.0.0.1 >nul & start "" http://127.0.0.1:%CALLPILOT_PORT%"
 python -m uvicorn app:app --host 0.0.0.0 --port %CALLPILOT_PORT%
 pause
