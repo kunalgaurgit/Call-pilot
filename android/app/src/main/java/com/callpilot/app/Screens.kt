@@ -765,31 +765,54 @@ fun SettingsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
             var updateMsg by remember { mutableStateOf("Version ${BuildConfig.VERSION_NAME}") }
-            var updateUrl by remember { mutableStateOf<String?>(null) }
+            var update by remember { mutableStateOf<AppUpdate?>(null) }
+            var apkFile by remember { mutableStateOf<java.io.File?>(null) }
+            var busy by remember { mutableStateOf(false) }
 
             Text(updateMsg, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
+                enabled = !busy,
                 onClick = {
-                    val url = updateUrl
-                    if (url != null) {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                        return@OutlinedButton
-                    }
-                    updateMsg = "Checking for updates..."
-                    scope.launch {
-                        updateMsg = try {
-                            val found = checkForUpdate()
-                            updateUrl = found?.second
-                            if (found == null) "Up to date (${BuildConfig.VERSION_NAME})" else "Version ${found.first} available"
-                        } catch (e: Exception) {
-                            "Update check failed - no internet?"
+                    val ready = apkFile
+                    val found = update
+                    when {
+                        // Downloaded already: retry install (e.g. after allowing "install unknown apps")
+                        ready != null -> if (!installUpdate(context, ready)) updateMsg = "Allow installs from Call Pilot, then tap Install"
+                        found != null -> scope.launch {
+                            busy = true
+                            try {
+                                val file = downloadUpdate(context, found) { updateMsg = "Downloading ${found.versionName}... $it%" }
+                                apkFile = file
+                                updateMsg = if (installUpdate(context, file)) "Installing ${found.versionName}..."
+                                else "Allow installs from Call Pilot, then tap Install"
+                            } catch (e: Exception) {
+                                updateMsg = "Download failed: ${e.message ?: "network error"}"
+                            }
+                            busy = false
+                        }
+                        else -> scope.launch {
+                            busy = true
+                            updateMsg = "Checking for updates..."
+                            updateMsg = try {
+                                update = checkForUpdate()
+                                update?.let { "Version ${it.versionName} available" } ?: "Up to date (${BuildConfig.VERSION_NAME})"
+                            } catch (e: Exception) {
+                                "Update check failed - no internet?"
+                            }
+                            busy = false
                         }
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (updateUrl != null) "Download update" else "Check for updates")
+                Text(
+                    when {
+                        apkFile != null -> "Install update"
+                        update != null -> "Download and install"
+                        else -> "Check for updates"
+                    }
+                )
             }
         }
     }
