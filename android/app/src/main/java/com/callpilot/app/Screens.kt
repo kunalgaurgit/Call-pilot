@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -129,7 +130,7 @@ fun DialerScreen(viewModel: CallViewModel, onCallClick: () -> Unit) {
                 modifier = Modifier.padding(top = 32.dp)
             ) {
                 Text(
-                    text = "CityCare Hospital",
+                    text = "AI Doctor",
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -211,7 +212,7 @@ fun DialerScreen(viewModel: CallViewModel, onCallClick: () -> Unit) {
                         viewModel.screen = Screen.APPOINTMENTS
                     }) {
                         Text(
-                            text = "My appointments",
+                            text = "My prescriptions",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyLarge
                         )
@@ -229,7 +230,7 @@ fun DialerScreen(viewModel: CallViewModel, onCallClick: () -> Unit) {
             }
 
             Text(
-                text = "Demo project - not a real hospital",
+                text = "College demo - not real medical advice",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 modifier = Modifier.padding(bottom = 16.dp)
@@ -263,7 +264,7 @@ fun InCallScreen(viewModel: CallViewModel) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "CC",
+                        text = "AI",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -271,7 +272,7 @@ fun InCallScreen(viewModel: CallViewModel) {
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "CityCare Hospital",
+                    text = "AI Doctor",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -407,6 +408,18 @@ fun InCallScreen(viewModel: CallViewModel) {
 fun EndedScreen(viewModel: CallViewModel, onDone: () -> Unit) {
     val context = LocalContext.current
     val ended = viewModel.ended
+    var autoOpened by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(ended.pdfUrl) {
+        if (!autoOpened && !ended.pdfUrl.isNullOrEmpty()) {
+            autoOpened = true
+            val fullUrl = formatFullPdfUrl(viewModel.serverUrl, ended.pdfUrl)
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl))
+            try {
+                context.startActivity(intent)
+            } catch (_: Exception) {}
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
@@ -430,7 +443,7 @@ fun EndedScreen(viewModel: CallViewModel, onDone: () -> Unit) {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Appointment confirmed",
+                            text = if (ended.bookingId.startsWith("RX-")) "Prescription ready" else "Appointment confirmed",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF16A34A)
@@ -443,6 +456,43 @@ fun EndedScreen(viewModel: CallViewModel, onDone: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(16.dp))
+
+                        if (ended.rx != null) {
+                            if (ended.rx.condition.isNotEmpty()) {
+                                Text(
+                                    text = "Condition: ${ended.rx.condition}",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                            if (ended.rx.medicines.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Medicines:",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                ended.rx.medicines.forEach { med ->
+                                    val details = listOf(
+                                        med.strength.takeIf { it.isNotEmpty() },
+                                        med.dose.takeIf { it.isNotEmpty() },
+                                        med.frequency.takeIf { it.isNotEmpty() },
+                                        med.days.takeIf { it.isNotEmpty() }?.let { d ->
+                                            if (d.contains("day", ignoreCase = true)) d else "$d days"
+                                        }
+                                    ).filterNotNull().joinToString(", ")
+                                    val medLine = if (details.isNotEmpty()) "${med.name} - $details" else med.name
+                                    Text(
+                                        text = "• $medLine",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
 
                         if (!ended.doctor.isNullOrEmpty()) {
                             Text(
@@ -492,7 +542,7 @@ fun EndedScreen(viewModel: CallViewModel, onDone: () -> Unit) {
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
                             ) {
-                                Text("Open booking PDF")
+                                Text(if (ended.bookingId.startsWith("RX-")) "Open prescription PDF" else "Open booking PDF")
                             }
                         }
                     }
@@ -567,7 +617,7 @@ fun AppointmentsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("My appointments", color = MaterialTheme.colorScheme.onBackground) },
+                title = { Text("My prescriptions", color = MaterialTheme.colorScheme.onBackground) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -589,7 +639,7 @@ fun AppointmentsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No appointments yet",
+                    text = "No prescriptions yet",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

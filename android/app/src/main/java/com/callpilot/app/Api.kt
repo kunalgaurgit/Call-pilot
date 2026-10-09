@@ -2,6 +2,7 @@ package com.callpilot.app
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -13,11 +14,26 @@ data class Start(
     val business: String
 )
 
+data class Medicine(
+    val name: String,
+    val strength: String = "",
+    val dose: String = "",
+    val frequency: String = "",
+    val days: String = ""
+)
+
+data class Rx(
+    val condition: String,
+    val medicines: List<Medicine> = emptyList(),
+    val advice: List<String> = emptyList()
+)
+
 data class Turn(
     val reply: String,
     val state: String,
     val bookingId: String? = null,
-    val pdfUrl: String? = null
+    val pdfUrl: String? = null,
+    val rx: Rx? = null
 )
 
 data class Booking(
@@ -59,7 +75,7 @@ class Api(var baseUrl: String) {
         conn.doOutput = true
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
         val body = JSONObject().apply {
-            put("config_id", "hospital_helpline")
+            put("config_id", "ai_doctor")
             put("use_fake", false)
         }
         conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
@@ -78,6 +94,42 @@ class Api(var baseUrl: String) {
             sessionId = obj.getString("session_id"),
             greeting = obj.optString("greeting", ""),
             business = obj.optString("business", "")
+        )
+    }
+
+    private fun parseRx(obj: JSONObject): Rx? {
+        val rxObj = obj.optJSONObject("rx") ?: return null
+        val condition = rxObj.optString("condition", "")
+        val medicines = mutableListOf<Medicine>()
+        val medsArr = rxObj.optJSONArray("medicines")
+        if (medsArr != null) {
+            for (i in 0 until medsArr.length()) {
+                val medObj = medsArr.optJSONObject(i) ?: continue
+                val name = medObj.optString("name", "")
+                val strength = if (!medObj.isNull("strength")) medObj.optString("strength", "") else ""
+                val dose = if (!medObj.isNull("dose")) medObj.optString("dose", "") else ""
+                val frequency = if (!medObj.isNull("frequency")) medObj.optString("frequency", "") else ""
+                val days = if (!medObj.isNull("days")) {
+                    val d = medObj.opt("days")
+                    if (d == null || d == JSONObject.NULL) "" else d.toString()
+                } else ""
+                medicines.add(Medicine(name = name, strength = strength, dose = dose, frequency = frequency, days = days))
+            }
+        }
+        val advice = mutableListOf<String>()
+        val adviceArr = rxObj.optJSONArray("advice")
+        if (adviceArr != null) {
+            for (i in 0 until adviceArr.length()) {
+                val item = adviceArr.optString(i, "")
+                if (item.isNotEmpty() && item != "null") {
+                    advice.add(item)
+                }
+            }
+        }
+        return Rx(
+            condition = condition,
+            medicines = medicines,
+            advice = advice
         )
     }
 
@@ -104,11 +156,13 @@ class Api(var baseUrl: String) {
         val state = obj.optString("state", "")
         val bookingId = if (obj.has("booking_id") && !obj.isNull("booking_id")) obj.getString("booking_id") else null
         val pdfUrl = if (obj.has("pdf_url") && !obj.isNull("pdf_url")) obj.getString("pdf_url") else null
+        val rx = parseRx(obj)
         Turn(
             reply = reply,
             state = state,
             bookingId = bookingId,
-            pdfUrl = pdfUrl
+            pdfUrl = pdfUrl,
+            rx = rx
         )
     }
 

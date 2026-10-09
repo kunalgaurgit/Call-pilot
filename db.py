@@ -172,3 +172,18 @@ def get_appointment(session_id: str) -> dict | None:
         if not row:
             return None
         return dict(row)
+
+
+def get_record_by_session(session_id: str) -> dict | None:
+    with _connection() as conn:
+        cur = conn.execute(
+            "SELECT id, data FROM records WHERE session_id = ?",
+            (session_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        rec = json.loads(row[1])
+        rec["id"] = row[0]
+        return rec
+

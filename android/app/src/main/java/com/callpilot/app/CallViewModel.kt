@@ -39,7 +39,8 @@ data class Ended(
     val branch: String? = null,
     val pdfUrl: String? = null,
     val message: String = "",
-    val emergency: Boolean = false
+    val emergency: Boolean = false,
+    val rx: Rx? = null
 )
 
 class CallViewModel(application: Application) : AndroidViewModel(application) {
@@ -244,6 +245,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 if (isDone || isEscalated) {
                     val bookingId = turn.bookingId
                     val pdfUrl = turn.pdfUrl
+                    val rx = turn.rx
                     val isEmergency = turn.reply.contains("108")
                     speakAgent(turn.reply) {
                         viewModelScope.launch {
@@ -252,7 +254,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                                 bookingId = bookingId,
                                 pdfUrl = pdfUrl,
                                 message = turn.reply,
-                                emergency = isEmergency
+                                emergency = isEmergency,
+                                rx = rx
                             )
                         }
                     }
@@ -292,7 +295,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
         bookingId: String?,
         pdfUrl: String?,
         message: String,
-        emergency: Boolean
+        emergency: Boolean,
+        rx: Rx? = null
     ) {
         timerJob?.cancel()
         voice.endAudio()
@@ -310,7 +314,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             branch = appt?.hospitalBranch,
             pdfUrl = appt?.pdfUrl ?: pdfUrl,
             message = message,
-            emergency = emergency
+            emergency = emergency,
+            rx = rx
         )
         screen = Screen.ENDED
     }

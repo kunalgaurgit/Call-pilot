@@ -29,6 +29,82 @@ def doctor_slots(config: dict, today: date, taken: set = frozenset(), department
             result.append({"doctor": doc["name"], "department": doc.get("department", ""), "slots": slots})
     return result
 
+def build_rx(config: dict, fields: dict) -> dict:
+    formulary = config.get("formulary", {})
+    cond_key = fields.get("condition")
+    if not cond_key or cond_key not in formulary:
+        return {"status": "referred", "reason": "Your condition is not covered in our minor ailments formulary."}
+
+    cond_def = formulary[cond_key]
+    label = cond_def.get("label", cond_key)
+
+    severity = str(fields.get("severity", "")).lower().strip()
+    if severity == "severe":
+        return {"status": "referred", "reason": "Severe symptoms require evaluation by a doctor."}
+
+    try:
+        age = int(fields.get("age", 0))
+    except (ValueError, TypeError):
+        age = 0
+    if age < 12:
+        return {"status": "referred", "reason": "Patients under 12 years of age must be evaluated by a doctor."}
+
+    try:
+        duration = int(fields.get("duration_days", 0))
+    except (ValueError, TypeError):
+        duration = 0
+    max_days = cond_def.get("max_days")
+    if max_days is not None and duration > max_days:
+        return {"status": "referred", "reason": f"Symptoms lasting more than {max_days} days need a doctor's examination."}
+
+    raw_meds = cond_def.get("medicines", [])
+    is_pregnant = str(fields.get("pregnant", "")).lower().strip() == "yes"
+    allergies_str = str(fields.get("allergies", "")).lower().strip()
+    allergy_none = allergies_str in ("", "none", "no", "n/a", "nil", "no allergies")
+
+    filtered_meds = []
+    for med in raw_meds:
+        if is_pregnant and med.get("avoid_pregnant", False):
+            continue
+        has_allergy = False
+        if not allergy_none:
+            for akey in med.get("allergy_keys", []):
+                if akey.lower() in allergies_str:
+                    has_allergy = True
+                    break
+        if has_allergy:
+            continue
+        filtered_meds.append(med)
+
+    if not filtered_meds:
+        if is_pregnant and any(m.get("avoid_pregnant", False) for m in raw_meds):
+            return {"status": "referred", "reason": "Safe medicines for your condition during pregnancy require a doctor's consultation."}
+        if not allergy_none:
+            return {"status": "referred", "reason": "Due to your medicine allergies, an in-person doctor should choose your treatment."}
+        return {"status": "referred", "reason": "Suitable over-the-counter medicines are not available, please see a doctor."}
+
+    med_phrases = [
+        f"{m['name']}, {m.get('dose', '')} {m.get('frequency', '')}".strip()
+        for m in filtered_meds
+    ]
+    if len(med_phrases) == 1:
+        spoken_meds = med_phrases[0]
+    elif len(med_phrases) == 2:
+        spoken_meds = f"{med_phrases[0]}, and {med_phrases[1]}"
+    else:
+        spoken_meds = ", ".join(med_phrases[:-1]) + ", and " + med_phrases[-1]
+
+    spoken = f"I recommend {spoken_meds}.".replace("{", "").replace("}", "")
+
+    return {
+        "status": "ok",
+        "condition": label,
+        "medicines": filtered_meds,
+        "advice": list(cond_def.get("advice", [])),
+        "see_doctor_if": list(cond_def.get("see_doctor_if", [])),
+        "spoken": spoken,
+    }
+
 def validate(field: dict, value, today: date) -> tuple[bool, object]:
     val = str(value).strip() if value is not None else ""
     ftype = field.get("type", "text")
@@ -124,6 +200,7 @@ class Agent:
         self.book = book
         self.taken = taken or (lambda: set())
         self.booking_id = None
+        self.rx_id = None
         self.field_by_name = {f["name"]: f for f in self.config.get("fields", [])}
         self.state = "collecting"
         self.fields = {}
@@ -165,6 +242,12 @@ class Agent:
             lines.append("Departments:")
             for dept in self.config["departments"]:
                 lines.append(f"- {dept['name']}: {dept.get('treats', '')}")
+
+        if "formulary" in self.config:
+            lines.append("")
+            lines.append("Conditions you may treat:")
+            for k, cond in self.config["formulary"].items():
+                lines.append(f"- {k}: {cond.get('use_for', '')}")
 
         lines.extend([
             "",
@@ -362,13 +445,16 @@ class Agent:
                     missing = self._missing()
                     if not confirmed:
                         res = {"ok": False, "error": "Customer has not confirmed the request."}
+                        tool_results.append({"name": "submit", "response": res})
                     elif missing:
                         res = {"ok": False, "error": f"Missing required fields: {', '.join(missing)}."}
+                        tool_results.append({"name": "submit", "response": res})
                     elif not can_submit:
                         res = {
                             "ok": False,
                             "error": "Read all details back to the customer and get their confirmation before submitting.",
                         }
+                        tool_results.append({"name": "submit", "response": res})
                     else:
                         valid_slot = True
                         if "doctors" in self.config:
@@ -404,15 +490,49 @@ class Agent:
                                     tool_results.append({"name": "submit", "response": res})
                                     continue
 
-                        self.state = "done"
-                        if not summary:
-                            tmpl = self.config.get("summary_template", "")
-                            summary = tmpl.format_map(collections.defaultdict(str, self.fields))
-                        self.record = self._build_record("completed", summary)
-                        if self.booking_id:
-                            self.record["booking_id"] = self.booking_id
-                        res = {"ok": True}
-                    tool_results.append({"name": "submit", "response": res})
+                            self.state = "done"
+                            if not summary:
+                                tmpl = self.config.get("summary_template", "")
+                                summary = tmpl.format_map(collections.defaultdict(str, self.fields))
+                            self.record = self._build_record("completed", summary)
+                            if self.booking_id:
+                                self.record["booking_id"] = self.booking_id
+                            res = {"ok": True}
+                            tool_results.append({"name": "submit", "response": res})
+
+                        elif "formulary" in self.config:
+                            rx = build_rx(self.config, self.fields)
+                            if rx.get("status") == "referred":
+                                reason = rx.get("reason", "Needs doctor consultation")
+                                self.state = "escalated"
+                                self.record = self._build_record("referred", f"Referred to doctor: {reason}", reason)
+                                ref_msg = self.config.get("referral_message", "")
+                                self._esc_reply = f"{reason} {ref_msg}".strip() if ref_msg else reason
+                                tool_results.append({"name": "submit", "response": {"ok": True}})
+                                break
+                            else:
+                                self.rx_id = "RX-" + self.session_id[:6].upper()
+                                self.booking_id = self.rx_id
+                                self.state = "done"
+                                if not summary:
+                                    tmpl = self.config.get("summary_template", "")
+                                    summary = tmpl.format_map(collections.defaultdict(str, self.fields))
+                                self.record = self._build_record("completed", summary)
+                                self.record["rx"] = rx
+                                self.record["booking_id"] = self.rx_id
+                                res = {"ok": True}
+                                tool_results.append({"name": "submit", "response": res})
+
+                        else:
+                            self.state = "done"
+                            if not summary:
+                                tmpl = self.config.get("summary_template", "")
+                                summary = tmpl.format_map(collections.defaultdict(str, self.fields))
+                            self.record = self._build_record("completed", summary)
+                            if self.booking_id:
+                                self.record["booking_id"] = self.booking_id
+                            res = {"ok": True}
+                            tool_results.append({"name": "submit", "response": res})
 
                 elif call_name == "escalate":
                     reason = args.get("reason", "customer request")
@@ -429,7 +549,16 @@ class Agent:
                 if "done_template" in self.config:
                     d_str = self.fields.get("appointment_date")
                     spoken_d = date.fromisoformat(d_str).strftime("%A %d %B").replace(" 0", " ") if d_str else ""
-                    reply = self.config["done_template"].format_map(collections.defaultdict(str, {**self.fields, "booking_id": self.booking_id or "", "appointment_date_spoken": spoken_d, "appointment_time_spoken": time.fromisoformat(self.fields["appointment_time"]).strftime("%I:%M %p").lstrip("0") if self.fields.get("appointment_time") else ""}))
+                    rx_spoken = self.record.get("rx", {}).get("spoken", "") if self.record else ""
+                    rx_id = getattr(self, "rx_id", None) or self.booking_id or ""
+                    reply = self.config["done_template"].format_map(collections.defaultdict(str, {
+                        **self.fields,
+                        "booking_id": self.booking_id or "",
+                        "appointment_date_spoken": spoken_d,
+                        "appointment_time_spoken": time.fromisoformat(self.fields["appointment_time"]).strftime("%I:%M %p").lstrip("0") if self.fields.get("appointment_time") else "",
+                        "rx_spoken": rx_spoken,
+                        "rx_id": rx_id,
+                    }))
                 else:
                     reply = f"Thank you! Your request is confirmed. {self.record['summary']}"
                 break
@@ -467,8 +596,15 @@ class Agent:
 
     def _local_escalate(self, reason: str) -> str:
         self.state = "escalated"
+        r_lower = reason.lower().strip()
+        if r_lower.startswith("referral") and "referral_message" in self.config:
+            msg = self.config["referral_message"]
+            p_name = self.fields.get("patient_name")
+            summary = f"Referred to doctor ({p_name}): {reason}" if p_name else f"Referred to doctor: {reason}"
+            self.record = self._build_record("referred", summary, reason)
+            return msg
         msg = self.config.get("escalation_message", "")
-        if "emergency" in reason.lower() and "emergency_message" in self.config:
+        if "emergency" in r_lower and "emergency_message" in self.config:
             msg = self.config["emergency_message"]
         self.record = self._build_record("escalated", f"Escalated to staff: {reason}", reason)
         return msg

@@ -320,6 +320,97 @@ def booking_pdf(appt: dict, hospital: str) -> bytes:
     return bytes(pdf.output())
 
 
+def rx_pdf(record: dict, business: str) -> bytes:
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    def clean(s):
+        return unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode()
+
+    fields = record.get("fields", {})
+    rx = record.get("rx", {})
+    rx_id = record.get("booking_id", "")
+    created_at = record.get("created_at") or record.get("ended_at") or ""
+    try:
+        date_str = datetime.fromisoformat(created_at).astimezone().strftime("%d %b %Y, %I:%M %p")
+    except Exception:
+        date_str = date.today().isoformat()
+
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, clean(f"{business} - Prescription"), new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, clean(f"Prescription ID: {rx_id}"), new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(0, 6, clean(f"Date: {date_str}"), new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.ln(4)
+
+    info_rows = [
+        ("Patient Name", fields.get("patient_name", "")),
+        ("Age / Gender", f"{fields.get('age', '')} / {fields.get('gender', '')}"),
+        ("Symptoms", fields.get("symptoms", "")),
+        ("Duration / Severity", f"{fields.get('duration_days', '')} day{'' if str(fields.get('duration_days')) == '1' else 's'} / {fields.get('severity', '')}"),
+        ("Known Allergies", fields.get("allergies", "None")),
+        ("Current Medicines", fields.get("current_medicines", "None")),
+        ("Assessment", rx.get("condition", fields.get("condition", ""))),
+    ]
+    for label, val in info_rows:
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(48, 7, clean(label) + ":")
+        pdf.set_font("Helvetica", "", 11)
+        pdf.multi_cell(0, 7, clean(val), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(4)
+
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Prescribed Medicines:", new_x="LMARGIN", new_y="NEXT")
+
+    col_w = [65, 30, 65, 30]
+    headers = ["Medicine & Strength", "Dose", "Frequency", "Duration"]
+    pdf.set_font("Helvetica", "B", 10)
+    for w, h in zip(col_w, headers):
+        pdf.cell(w, 7, clean(h), border=1, align="C")
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 10)
+    meds = rx.get("medicines", [])
+    for med in meds:
+        name_str = f"{med.get('name', '')} {med.get('strength', '')}".strip()
+        dose_str = str(med.get("dose", ""))
+        freq_str = str(med.get("frequency", ""))
+        days_str = f"{med.get('days', '')} days" if med.get("days") else ""
+        pdf.cell(col_w[0], 7, clean(name_str), border=1)
+        pdf.cell(col_w[1], 7, clean(dose_str), border=1, align="C")
+        pdf.cell(col_w[2], 7, clean(freq_str), border=1)
+        pdf.cell(col_w[3], 7, clean(days_str), border=1, align="C")
+        pdf.ln()
+
+    advice_list = rx.get("advice", [])
+    if advice_list:
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 7, "Advice & Home Care:", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        for item in advice_list:
+            pdf.multi_cell(0, 6, clean(f"- {item}"), new_x="LMARGIN", new_y="NEXT")
+
+    doctor_if = rx.get("see_doctor_if", [])
+    if doctor_if:
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 7, "Consult a Doctor Immediately If:", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        for item in doctor_if:
+            pdf.multi_cell(0, 6, clean(f"- {item}"), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.ln(6)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 8, "AI-generated college demo - NOT a real prescription. Consult a doctor or pharmacist.", new_x="LMARGIN", new_y="NEXT", align="C")
+
+    return bytes(pdf.output())
+
+
+
 @app.post("/api/call/start")
 def start_call(body: StartRequest, request: Request):
     _sweep_idle()
@@ -397,35 +488,66 @@ def call_turn(sid: str, body: TurnRequest = TurnRequest()):
                   + (f", booking {record['booking_id']}" if record.get("booking_id") else ""))
         if "booking_id" in record:
             res["booking_id"] = record["booking_id"]
-            res["pdf_url"] = f"/api/bookings/{sid}/pdf"
+            if record.get("rx"):
+                res["pdf_url"] = f"/api/prescriptions/{sid}/pdf"
+                res["rx"] = record["rx"]
+            else:
+                res["pdf_url"] = f"/api/bookings/{sid}/pdf"
         res["record"] = mask(record)
     res["record_id"] = record_id
     return res
 
 
 @app.get("/api/bookings/{session_id}")
+@app.get("/api/prescriptions/{session_id}")
 def get_booking(session_id: str):
     appt = db.get_appointment(session_id)
-    if not appt:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-    res = dict(appt)
-    res["booking_id"] = f"HB-{appt['id']:04d}"
-    res["pdf_url"] = f"/api/bookings/{session_id}/pdf"
-    return res
+    if appt:
+        res = dict(appt)
+        res["booking_id"] = f"HB-{appt['id']:04d}"
+        res["pdf_url"] = f"/api/bookings/{session_id}/pdf"
+        return res
+    rec = db.get_record_by_session(session_id)
+    if rec and rec.get("rx") and rec.get("status") == "completed":
+        f = rec.get("fields", {})
+        return {
+            "session_id": session_id,
+            "booking_id": rec.get("booking_id", ""),
+            "patient_name": f.get("patient_name", ""),
+            "symptoms": f.get("symptoms", ""),
+            "age": f.get("age"),
+            "gender": f.get("gender", ""),
+            "created_at": rec.get("created_at") or rec.get("ended_at") or "",
+            "rx": rec.get("rx"),
+            "pdf_url": f"/api/prescriptions/{session_id}/pdf",
+        }
+    raise HTTPException(status_code=404, detail="Appointment not found")
 
 
 @app.get("/api/bookings/{session_id}/pdf")
+@app.get("/api/prescriptions/{session_id}/pdf")
 def download_pdf(session_id: str):
     appt = db.get_appointment(session_id)
-    if not appt:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-    hospital = next((c["business"] for c in CONFIGS.values() if "doctors" in c), "Hospital")
-    pdf_bytes = booking_pdf(appt, hospital)
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="HB-{appt["id"]:04d}.pdf"'}
-    )
+    if appt:
+        hospital = next((c["business"] for c in CONFIGS.values() if "doctors" in c), "Hospital")
+        pdf_bytes = booking_pdf(appt, hospital)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="HB-{appt["id"]:04d}.pdf"'}
+        )
+    rec = db.get_record_by_session(session_id)
+    if rec and rec.get("rx") and rec.get("status") == "completed":
+        business = rec.get("business") or next((c["business"] for c in CONFIGS.values() if "formulary" in c), "AI Doctor")
+        pdf_bytes = rx_pdf(rec, business)
+        rx_id = rec.get("booking_id", "prescription")
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{rx_id}.pdf"'}
+        )
+    raise HTTPException(status_code=404, detail="Appointment not found")
+
 
 
 @app.post("/api/call/{sid}/hangup")

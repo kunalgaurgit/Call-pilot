@@ -1,0 +1,430 @@
+{
+  "id": "ai_doctor",
+  "business": "AI Doctor",
+  "purpose": "conduct a casual AI doctor voice consultation for minor health complaints, provide over-the-counter medicine advice and demo prescriptions, or refer callers to a doctor",
+  "greeting": "Hello, I am your AI doctor assistant. Please note this is an AI demo and not a real doctor. What health problem are you experiencing today?",
+  "consent_notice": "This call is handled by an AI assistant demo and is not a real doctor or medical diagnosis. It provides guidance and demo prescriptions for minor issues only. In an emergency call 108.",
+  "tone": "warm casual family doctor, short spoken sentences",
+  "action": {"type": "prescription", "name": "create_prescription"},
+  "escalation_phrases": ["human", "real person", "receptionist", "talk to someone", "operator"],
+  "escalation_message": "Of course. I'm transferring you to our staff. Please stay on the line.",
+  "referral_message": "Based on what you told me, this needs a real doctor to examine you. Please contact or visit a doctor soon. Take care.",
+  "emergency_phrases": [
+    "chest pain", "heart attack", "can't breathe", "cannot breathe", "breathing difficulty",
+    "difficulty breathing", "unconscious", "fainted", "heavy bleeding", "severe bleeding",
+    "stroke", "seizure", "suicide", "overdose", "poison", "blood in vomit", "severe allergic", "face swelling"
+  ],
+  "emergency_message": "This sounds like a medical emergency. Please call 108 for an ambulance right now, or go to the nearest emergency room. I'm ending this call so you can get help immediately.",
+  "max_turns": 24,
+  "summary_template": "{patient_name} ({age}, {gender}) - {condition}. Symptoms: {symptoms} ({duration_days} days, {severity}).",
+  "done_template": "Here is your prescription, {patient_name}. {rx_spoken} Your prescription number is {rx_id}. It is downloading on your phone now. This is an AI demo, not a real prescription, so please check with a doctor or pharmacist before taking any medicine. Get well soon.",
+  "rules": [
+    "First ask what is happening, since when, how bad the symptoms are, and if there are other symptoms.",
+    "Then collect the patient details: full name, age, gender, and any medicine allergies (or 'none'). If female between 12 and 50, ask about pregnancy.",
+    "Pick ONE condition from the formulary based on the symptoms and update condition without asking the caller.",
+    "If the condition is severe, unclear, not in the formulary, red flags are present, or the caller is under 12, call escalate with a reason starting with 'referral:'.",
+    "When all required details are gathered, read back a short summary and ask 'Shall I prepare your prescription?'.",
+    "Only call submit with confirmed=true after the caller confirms.",
+    "Never name any medicine before submit returns ok, and never name medicines outside the formulary.",
+    "If the caller describes a medical emergency, call escalate with reason 'medical emergency'."
+  ],
+  "fields": [
+    {
+      "name": "symptoms",
+      "label": "Symptoms",
+      "type": "text",
+      "required": true,
+      "prompt": "Ask what health problem or symptoms the caller is experiencing."
+    },
+    {
+      "name": "duration_days",
+      "label": "Duration in days",
+      "type": "int",
+      "required": true,
+      "min": 0,
+      "max": 365,
+      "prompt": "Ask how many days the symptoms have lasted."
+    },
+    {
+      "name": "severity",
+      "label": "Severity",
+      "type": "enum",
+      "required": true,
+      "enum": ["mild", "moderate", "severe"],
+      "prompt": "Ask how severe the symptoms are: mild, moderate, or severe."
+    },
+    {
+      "name": "patient_name",
+      "label": "Patient name",
+      "type": "text",
+      "required": true,
+      "prompt": "Ask for the patient's full name."
+    },
+    {
+      "name": "age",
+      "label": "Age",
+      "type": "int",
+      "required": true,
+      "min": 0,
+      "max": 120,
+      "prompt": "Ask for the patient's age in years."
+    },
+    {
+      "name": "gender",
+      "label": "Gender",
+      "type": "enum",
+      "required": true,
+      "enum": ["male", "female", "other"],
+      "prompt": "Ask for the patient's gender."
+    },
+    {
+      "name": "pregnant",
+      "label": "Pregnant",
+      "type": "enum",
+      "required": false,
+      "enum": ["yes", "no"],
+      "prompt": "Ask if the patient is pregnant (only if female aged 12 to 50)."
+    },
+    {
+      "name": "allergies",
+      "label": "Allergies",
+      "type": "text",
+      "required": true,
+      "prompt": "Ask if the patient has any known medicine allergies (say 'none' if none)."
+    },
+    {
+      "name": "condition",
+      "label": "Condition",
+      "type": "enum",
+      "required": true,
+      "after": ["symptoms", "severity"],
+      "enum": [
+        "common_cold",
+        "fever",
+        "headache",
+        "acidity",
+        "mild_diarrhoea",
+        "muscle_pain",
+        "allergic_rhinitis",
+        "sore_throat",
+        "dry_cough",
+        "constipation"
+      ],
+      "prompt": "Select the matching condition from the formulary based on symptoms. Never ask the caller."
+    },
+    {
+      "name": "current_medicines",
+      "label": "Current medicines",
+      "type": "text",
+      "required": false,
+      "prompt": "Ask if the patient is currently taking any regular medicines."
+    }
+  ],
+  "formulary": {
+    "common_cold": {
+      "label": "Common Cold",
+      "use_for": "runny nose, sneezing, mild congestion, mild body fatigue",
+      "max_days": 7,
+      "medicines": [
+        {
+          "name": "Paracetamol",
+          "strength": "500 mg",
+          "dose": "1 tablet",
+          "frequency": "every 6 to 8 hours as needed",
+          "days": 3,
+          "allergy_keys": ["paracetamol", "acetaminophen"],
+          "avoid_pregnant": false
+        },
+        {
+          "name": "Cetirizine",
+          "strength": "10 mg",
+          "dose": "1 tablet",
+          "frequency": "once daily at bedtime",
+          "days": 3,
+          "allergy_keys": ["cetirizine"],
+          "avoid_pregnant": false
+        },
+        {
+          "name": "Saline Nasal Spray",
+          "strength": "0.9%",
+          "dose": "1 to 2 sprays in each nostril",
+          "frequency": "2 to 3 times daily",
+          "days": 5,
+          "allergy_keys": ["saline"],
+          "avoid_pregnant": false
+        }
+      ],
+      "advice": [
+        "Drink plenty of warm water, clear broths, and herbal tea.",
+        "Get plenty of rest and avoid strenuous physical activity.",
+        "Steam inhalation once or twice daily can ease nasal congestion."
+      ],
+      "see_doctor_if": [
+        "Fever exceeds 102 F or lasts longer than 3 days.",
+        "Shortness of breath, chest pain, or wheezing develops.",
+        "Symptoms worsen significantly after 5 days."
+      ]
+    },
+    "fever": {
+      "label": "Mild Fever",
+      "use_for": "elevated body temperature, mild body ache, chills",
+      "max_days": 3,
+      "medicines": [
+        {
+          "name": "Paracetamol",
+          "strength": "500 mg",
+          "dose": "1 tablet",
+          "frequency": "every 6 to 8 hours as needed",
+          "days": 3,
+          "allergy_keys": ["paracetamol", "acetaminophen"],
+          "avoid_pregnant": false
+        }
+      ],
+      "advice": [
+        "Stay well hydrated with water, electrolytes, and warm soups.",
+        "Rest in a cool, well-ventilated room.",
+        "Apply a lukewarm damp cloth to your forehead if feeling very warm."
+      ],
+      "see_doctor_if": [
+        "Fever exceeds 102 F or lasts beyond 3 days.",
+        "Severe headache, stiff neck, rash, or confusion develops.",
+        "Difficulty breathing or persistent vomiting occurs."
+      ]
+    },
+    "headache": {
+      "label": "Tension Headache",
+      "use_for": "mild to moderate headache, stress headache, scalp tension",
+      "max_days": 3,
+      "medicines": [
+        {
+          "name": "Paracetamol",
+          "strength": "500 mg",
+          "dose": "1 tablet",
+          "frequency": "every 6 to 8 hours as needed",
+          "days": 2,
+          "allergy_keys": ["paracetamol", "acetaminophen"],
+          "avoid_pregnant": false
+        }
+      ],
+      "advice": [
+        "Rest in a quiet, dark, and cool room.",
+        "Drink plenty of water to prevent dehydration.",
+        "Limit screen time and take periodic breaks."
+      ],
+      "see_doctor_if": [
+        "Sudden severe explosive headache.",
+        "Headache following head trauma or a fall.",
+        "Accompanied by vision changes, weakness, or fever."
+      ]
+    },
+    "acidity": {
+      "label": "Acidity / Heartburn",
+      "use_for": "heartburn, acid reflux, stomach burning, indigestion",
+      "max_days": 7,
+      "medicines": [
+        {
+          "name": "Antacid",
+          "strength": "Gel / Tablet",
+          "dose": "10 ml liquid or 1 chewable tablet",
+          "frequency": "after meals and at bedtime",
+          "days": 3,
+          "allergy_keys": ["antacid"],
+          "avoid_pregnant": false
+        }
+      ],
+      "advice": [
+        "Avoid spicy, oily, acidic, and fried foods.",
+        "Eat smaller, frequent meals instead of heavy dinners.",
+        "Do not lie down for at least 2 hours after eating."
+      ],
+      "see_doctor_if": [
+        "Severe chest pain radiating to arm, neck, or jaw.",
+        "Difficulty swallowing or painful swallowing.",
+        "Black tarry stools or vomiting blood."
+      ]
+    },
+    "mild_diarrhoea": {
+      "label": "Mild Diarrhoea",
+      "use_for": "mild loose watery stools without fever or blood",
+      "max_days": 2,
+      "medicines": [
+        {
+          "name": "Oral Rehydration Salts (ORS)",
+          "strength": "WHO formula",
+          "dose": "1 sachet in 1 litre clean water",
+          "frequency": "sip after each loose stool",
+          "days": 2,
+          "allergy_keys": ["ors", "oral rehydration salts"],
+          "avoid_pregnant": false
+        }
+      ],
+      "advice": [
+        "Drink plenty of fluids including ORS, coconut water, and rice water.",
+        "Eat a bland diet: bananas, rice, curd, and toast.",
+        "Avoid dairy, fatty foods, caffeine, and fruit juices."
+      ],
+      "see_doctor_if": [
+        "Blood or mucus in stools.",
+        "Signs of severe dehydration: dark urine, dizziness, extreme thirst.",
+        "Diarrhoea lasts more than 2 days or is accompanied by high fever."
+      ]
+    },
+    "muscle_pain": {
+      "label": "Minor Muscle Pain / Sprain",
+      "use_for": "minor muscle ache, back stiffness, mild joint or tendon sprain",
+      "max_days": 5,
+      "medicines": [
+        {
+          "name": "Ibuprofen",
+          "strength": "400 mg",
+          "dose": "1 tablet after food",
+          "frequency": "twice daily",
+          "days": 3,
+          "allergy_keys": ["ibuprofen", "nsaid", "aspirin"],
+          "avoid_pregnant": true
+        },
+        {
+          "name": "Paracetamol",
+          "strength": "500 mg",
+          "dose": "1 tablet",
+          "frequency": "every 8 hours as needed",
+          "days": 3,
+          "allergy_keys": ["paracetamol", "acetaminophen"],
+          "avoid_pregnant": false
+        }
+      ],
+      "advice": [
+        "Rest the affected area and avoid strenuous physical exertion.",
+        "Apply cold packs for the first 24 hours, then warm compresses.",
+        "Gentle stretching once acute pain subsides."
+      ],
+      "see_doctor_if": [
+        "Inability to bear weight or move the affected limb.",
+        "Severe swelling, visible deformity, or numbness.",
+        "Pain worsens or does not improve within 3 days."
+      ]
+    },
+    "allergic_rhinitis": {
+      "label": "Seasonal Allergy / Rhinitis",
+      "use_for": "sneezing, itchy watery eyes, clear runny nose",
+      "max_days": 7,
+      "medicines": [
+        {
+          "name": "Cetirizine",
+          "strength": "10 mg",
+          "dose": "1 tablet",
+          "frequency": "once daily at bedtime",
+          "days": 5,
+          "allergy_keys": ["cetirizine"],
+          "avoid_pregnant": false
+        },
+        {
+          "name": "Saline Nasal Spray",
+          "strength": "0.9%",
+          "dose": "1 to 2 sprays in each nostril",
+          "frequency": "2 to 3 times daily",
+          "days": 7,
+          "allergy_keys": ["saline"],
+          "avoid_pregnant": false
+        }
+      ],
+      "advice": [
+        "Avoid known triggers like dust, pollen, and pet dander.",
+        "Wash face and hands after returning from outdoors.",
+        "Keep doors and windows closed during high pollen times."
+      ],
+      "see_doctor_if": [
+        "Swelling of lips, tongue, face, or throat.",
+        "Wheezing, chest tightness, or breathing difficulty.",
+        "Symptoms do not improve after 5 days."
+      ]
+    },
+    "sore_throat": {
+      "label": "Sore Throat",
+      "use_for": "throat irritation, scratchiness, mild pain on swallowing",
+      "max_days": 4,
+      "medicines": [
+        {
+          "name": "Lozenges",
+          "strength": "Antiseptic",
+          "dose": "1 lozenge",
+          "frequency": "dissolve slowly every 3 to 4 hours",
+          "days": 3,
+          "allergy_keys": ["lozenge", "lozenges"],
+          "avoid_pregnant": false
+        },
+        {
+          "name": "Paracetamol",
+          "strength": "500 mg",
+          "dose": "1 tablet",
+          "frequency": "every 8 hours as needed",
+          "days": 3,
+          "allergy_keys": ["paracetamol", "acetaminophen"],
+          "avoid_pregnant": false
+        }
+      ],
+      "advice": [
+        "Gargle with warm salt water 3 to 4 times a day.",
+        "Drink warm water with honey and lemon.",
+        "Avoid cold drinks, smoking, and dry air."
+      ],
+      "see_doctor_if": [
+        "Severe difficulty swallowing saliva or opening the mouth.",
+        "High fever or visible white spots on tonsils.",
+        "Symptoms persist beyond 4 days."
+      ]
+    },
+    "dry_cough": {
+      "label": "Mild Dry Cough",
+      "use_for": "tickly dry cough without phlegm or breathlessness",
+      "max_days": 5,
+      "medicines": [
+        {
+          "name": "Lozenges",
+          "strength": "Honey Menthol",
+          "dose": "1 lozenge",
+          "frequency": "dissolve slowly every 4 hours",
+          "days": 3,
+          "allergy_keys": ["lozenge", "lozenges"],
+          "avoid_pregnant": false
+        }
+      ],
+      "advice": [
+        "Take one teaspoon of honey with warm water or ginger.",
+        "Inhale warm steam for 5 to 10 minutes twice daily.",
+        "Keep throat moist by drinking water frequently."
+      ],
+      "see_doctor_if": [
+        "Coughing up blood or thick discolored phlegm.",
+        "Shortness of breath, chest pain, or high fever.",
+        "Cough persists for longer than 2 weeks."
+      ]
+    },
+    "constipation": {
+      "label": "Mild Constipation",
+      "use_for": "infrequent or hard bowel movements without severe pain",
+      "max_days": 5,
+      "medicines": [
+        {
+          "name": "Isabgol (Psyllium Husk)",
+          "strength": "Pure husk",
+          "dose": "1 to 2 teaspoons in a glass of water",
+          "frequency": "once daily at bedtime",
+          "days": 3,
+          "allergy_keys": ["isabgol", "psyllium"],
+          "avoid_pregnant": false
+        }
+      ],
+      "advice": [
+        "Eat fiber-rich foods like oats, fruits, and green vegetables.",
+        "Drink at least 8 to 10 glasses of water daily.",
+        "Engage in light physical exercise like walking."
+      ],
+      "see_doctor_if": [
+        "Severe abdominal pain, cramping, or vomiting.",
+        "Blood in stools or rectal bleeding.",
+        "No bowel movement for more than 5 days."
+      ]
+    }
+  }
+}

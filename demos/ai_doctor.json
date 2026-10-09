@@ -1,0 +1,63 @@
+{
+  "config_id": "ai_doctor",
+  "turns": [
+    {
+      "user": "Hi, I have a mild headache since yesterday.",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "symptoms": "headache",
+                "duration_days": 1,
+                "severity": "mild"
+              }
+            }
+          ]
+        },
+        {
+          "text": "I can help with that. To evaluate this properly, could you tell me your full name, age, gender, and whether you have any medicine allergies?"
+        }
+      ]
+    },
+    {
+      "user": "My name is Rahul Sharma, I am 28, male, and no allergies.",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "update_fields",
+              "args": {
+                "patient_name": "Rahul Sharma",
+                "age": 28,
+                "gender": "male",
+                "allergies": "none",
+                "condition": "headache"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Thank you, Rahul. To confirm: Rahul Sharma, 28, male, with a mild headache for 1 day and no known allergies. I can prepare a prescription for tension headache. Shall I prepare your prescription?"
+        }
+      ]
+    },
+    {
+      "user": "Yes, please.",
+      "llm": [
+        {
+          "calls": [
+            {
+              "name": "submit",
+              "args": {
+                "confirmed": true,
+                "summary": "Rahul Sharma (28, male) - Tension Headache. Symptoms: headache (1 days, mild)."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

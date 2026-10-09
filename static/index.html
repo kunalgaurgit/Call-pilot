@@ -471,14 +471,14 @@
             const opt = document.createElement("option");
             opt.value = cfg.id;
             opt.textContent = cfg.business + (cfg.purpose ? " (" + cfg.purpose + ")" : "");
-            if (cfg.id === "hospital_helpline") {
+            if (cfg.id === "ai_doctor") {
               opt.selected = true;
             }
             businessSelect.appendChild(opt);
           });
-          const hospitalCfg = configs.find(c => c.id === "hospital_helpline");
-          if (hospitalCfg) {
-            businessSelect.value = "hospital_helpline";
+          const defaultCfg = configs.find(c => c.id === "ai_doctor") || configs.find(c => c.id === "hospital_helpline");
+          if (defaultCfg) {
+            businessSelect.value = defaultCfg.id;
           }
         }
       } catch (err) {
@@ -675,11 +675,23 @@
           document.getElementById("booking-time-val").textContent = f.appointment_time || "—";
           document.getElementById("booking-branch-val").textContent = f.hospital_branch || "—";
 
-          const pdfUrl = record?.pdf_url || ("/api/bookings/" + encodeURIComponent(sessionId) + "/pdf");
+          const isRx = String(bookingId).startsWith("RX-");
+          const pill = bookingCard.querySelector(".booking-pill");
+          if (pill) pill.textContent = isRx ? "Prescription" : "Confirmed";
+
+          bookingCard.querySelectorAll(".booking-field").forEach(el => {
+            const valEl = el.querySelector(".booking-val");
+            el.style.display = (valEl && valEl.textContent && valEl.textContent !== "—") ? "" : "none";
+          });
+
+          const pdfUrl = record?.pdf_url || (isRx
+            ? ("/api/prescriptions/" + encodeURIComponent(sessionId) + "/pdf")
+            : ("/api/bookings/" + encodeURIComponent(sessionId) + "/pdf"));
           const pdfBtn = document.getElementById("pdf-download-btn");
           if (pdfBtn) {
             pdfBtn.href = pdfUrl;
             pdfBtn.style.display = "inline-flex";
+            pdfBtn.textContent = isRx ? "📄 Download prescription PDF" : "📄 Download booking PDF";
           }
           finalSummaryText.textContent = record?.summary || "";
         } else {
