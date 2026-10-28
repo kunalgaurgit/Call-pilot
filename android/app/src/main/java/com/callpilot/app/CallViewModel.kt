@@ -62,6 +62,11 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     var serverState by mutableStateOf("Searching")
     var ended by mutableStateOf(Ended())
     var appointments by mutableStateOf<List<Booking>>(emptyList())
+    /** Whole call transcript as (who, text), newest last, for the in-call log panel. */
+    var log by mutableStateOf<List<Pair<String, String>>>(emptyList())
+    /** Details the AI has saved so far (server field name -> value), for the live case sheet. */
+    var caseSheet by mutableStateOf<Map<String, String>>(emptyMap())
+    var serverInfo by mutableStateOf<org.json.JSONObject?>(null)
 
     private var timerJob: Job? = null
     private var missCount = 0
@@ -87,6 +92,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 api.baseUrl = found
                 serverState = "Connected"
                 prefs.edit().putString("server", found).apply()
+                serverInfo = api.status()
             } else {
                 serverState = "Not found"
             }
@@ -152,6 +158,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             callStatus = "Ringing"
             agentLine = ""
             callerLine = ""
+            log = emptyList()
+            caseSheet = emptyMap()
             muted = false
             speaker = false
             missCount = 0
@@ -184,6 +192,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 val start = api.startCall()
                 currentSessionId = start.sessionId
                 agentLine = start.greeting
+                log = log + ("AI" to start.greeting)
                 speakAgent(start.greeting)
             } catch (e: Exception) {
                 endCallInternal("Connection failed: ${e.message ?: "Server error"}")
@@ -236,6 +245,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     private fun onCallerText(text: String) {
         if (screen != Screen.IN_CALL) return
         callerLine = text
+        log = log + ("YOU" to text)
         callStatus = "Thinking"
         val sid = currentSessionId ?: return
         viewModelScope.launch {
@@ -243,6 +253,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 val turn = api.turn(sid, text)
                 turnFails = 0
                 agentLine = turn.reply
+                log = log + ("AI" to turn.reply)
+                if (turn.fields.isNotEmpty()) caseSheet = turn.fields
                 val isDone = turn.state == "done"
                 val isEscalated = turn.state == "escalated"
                 if (isDone || isEscalated) {

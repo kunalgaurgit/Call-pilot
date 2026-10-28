@@ -2,37 +2,47 @@ package com.callpilot.app
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle as UiTextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.net.URL
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
@@ -71,27 +81,35 @@ val Icons.Filled.Call: ImageVector
     }
 private var _callVector: ImageVector? = null
 
-val CallPilotDarkScheme = darkColorScheme(
-    primary = Color(0xFF16A34A),
+// Classic "hospital terminal" palette: grey bevelled panels, navy title bars, LED colours.
+private val Desk = Color(0xFFD4D0C8)
+private val PanelBg = Color(0xFFECE9D8)
+private val Shadow = Color(0xFF808080)
+private val Navy = Color(0xFF0A246A)
+private val NavyLight = Color(0xFF3A6EA5)
+private val Ink = Color(0xFF111111)
+private val Muted = Color(0xFF555555)
+private val Green = Color(0xFF0B8A2E)
+private val Red = Color(0xFFB91C1C)
+private val Amber = Color(0xFFB45309)
+private val Mono = FontFamily.Monospace
+
+val CallPilotLightScheme = lightColorScheme(
+    primary = Navy,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFF14532D),
-    onPrimaryContainer = Color(0xFFDCFCE7),
-    background = Color(0xFF0F172A),
-    onBackground = Color(0xFFF8FAFC),
-    surface = Color(0xFF1E293B),
-    onSurface = Color(0xFFF8FAFC),
-    surfaceVariant = Color(0xFF334155),
-    onSurfaceVariant = Color(0xFF94A3B8),
-    error = Color(0xFFDC2626),
+    background = Desk,
+    onBackground = Ink,
+    surface = PanelBg,
+    onSurface = Ink,
+    surfaceVariant = Desk,
+    onSurfaceVariant = Muted,
+    error = Red,
     onError = Color.White
 )
 
 @Composable
 fun CallPilotTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = CallPilotDarkScheme,
-        content = content
-    )
+    MaterialTheme(colorScheme = CallPilotLightScheme, content = content)
 }
 
 fun formatSpokenDate(dateStr: String): String {
@@ -112,292 +130,383 @@ fun formatFullPdfUrl(serverUrl: String, pdfUrl: String): String {
     return "$cleanServer$cleanPath"
 }
 
+private fun openUrl(context: android.content.Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (_: Exception) {}
+}
+
+private val CONDITIONS = listOf(
+    "C01 Common cold", "C02 Fever", "C03 Headache", "C04 Acidity", "C05 Loose motions",
+    "C06 Muscle pain", "C07 Allergy / sneezing", "C08 Sore throat", "C09 Dry cough", "C10 Constipation"
+)
+
+private val HEALTH_TIPS = listOf(
+    "Drink 8 to 10 glasses of water every day.",
+    "Walk for 30 minutes daily - it lowers BP and sugar.",
+    "Wash hands for 20 seconds before every meal.",
+    "Sleep 7 to 8 hours; screens off 30 minutes before bed.",
+    "Eat one seasonal fruit and one green vegetable daily.",
+    "Never take antibiotics without a doctor's prescription.",
+    "Haldi doodh at night soothes a sore throat."
+)
+
+// Labels for the live case sheet, in consultation order (server field names).
+private val CASE_FIELDS = listOf(
+    "symptoms" to "Chief complaint",
+    "duration_days" to "Duration (days)",
+    "symptom_details" to "History",
+    "associated_symptoms" to "Other symptoms",
+    "tried_so_far" to "Tried so far",
+    "severity" to "Severity (AI)",
+    "patient_name" to "Patient name",
+    "age" to "Age",
+    "gender" to "Gender",
+    "pregnant" to "Pregnant",
+    "allergies" to "Allergies",
+    "current_medicines" to "Current meds",
+    "condition" to "Provisional Dx"
+)
+
+// ---------- building blocks ----------
+
 @Composable
-fun DialerScreen(viewModel: CallViewModel, onCallClick: () -> Unit) {
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 32.dp)
-            ) {
-                Text(
-                    text = "AI Doctor",
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Appointment Helpline",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(24.dp))
+private fun Bevel(modifier: Modifier = Modifier, pressed: Boolean = false, content: @Composable BoxScope.() -> Unit) {
+    Box(
+        modifier
+            .border(1.dp, if (pressed) Shadow else Color.White)
+            .padding(1.dp)
+            .border(1.dp, if (pressed) Color.White else Shadow),
+        content = content
+    )
+}
 
-                val serverText = when (viewModel.serverState) {
-                    "Searching" -> "Searching..."
-                    "Connected" -> {
-                        val host = try {
-                            URL(viewModel.serverUrl).host
-                        } catch (_: Exception) {
-                            viewModel.serverUrl
-                        }
-                        "Connected - $host"
-                    }
-                    else -> "Server not found - tap to retry"
-                }
+@Composable
+private fun TitleBar(text: String, right: String = "", onBack: (() -> Unit)? = null) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(Brush.horizontalGradient(listOf(Navy, NavyLight)))
+            .padding(horizontal = 6.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (onBack != null) {
+            RetroButton("< BACK", onClick = onBack, fontSize = 10.sp, height = 24.dp)
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (right.isNotEmpty()) Text(right, color = Color(0xFFE0E7FF), fontSize = 11.sp, fontFamily = Mono)
+    }
+}
 
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = when (viewModel.serverState) {
-                        "Connected" -> Color(0xFF14532D)
-                        "Searching" -> MaterialTheme.colorScheme.surfaceVariant
-                        else -> Color(0xFF451A1A)
-                    },
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable(enabled = viewModel.serverState != "Searching") {
-                            viewModel.retrySearch()
-                        }
-                ) {
-                    Text(
-                        text = serverText,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = when (viewModel.serverState) {
-                            "Connected" -> Color(0xFFDCFCE7)
-                            "Searching" -> MaterialTheme.colorScheme.onSurfaceVariant
-                            else -> Color(0xFFFCA5A5)
-                        }
-                    )
-                }
-            }
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Button(
-                    onClick = onCallClick,
-                    modifier = Modifier.size(96.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF16A34A)
-                    ),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Call,
-                        contentDescription = "Call",
-                        modifier = Modifier.size(48.dp),
-                        tint = Color.White
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(36.dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    TextButton(onClick = {
-                        viewModel.loadAppointments()
-                        viewModel.screen = Screen.APPOINTMENTS
-                    }) {
-                        Text(
-                            text = "My prescriptions",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                    TextButton(onClick = {
-                        viewModel.screen = Screen.SETTINGS
-                    }) {
-                        Text(
-                            text = "Settings",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-            }
-
+@Composable
+private fun Panel(title: String, modifier: Modifier = Modifier, accent: Color = Navy, content: @Composable ColumnScope.() -> Unit) {
+    Bevel(modifier.padding(vertical = 3.dp)) {
+        Column(Modifier.fillMaxWidth().background(PanelBg)) {
             Text(
-                text = "College demo - not real medical advice",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.padding(bottom = 16.dp)
+                title.uppercase(),
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.fillMaxWidth().background(accent).padding(horizontal = 6.dp, vertical = 2.dp)
             )
+            Column(Modifier.padding(6.dp), content = content)
         }
     }
 }
 
 @Composable
-fun InCallScreen(viewModel: CallViewModel) {
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
+private fun KV(label: String, value: String, valueColor: Color = Ink) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
+        Text("$label:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted, modifier = Modifier.width(110.dp))
+        Text(value.ifEmpty { "---" }, fontSize = 11.sp, fontFamily = Mono, color = if (value.isEmpty()) Shadow else valueColor)
+    }
+}
+
+@Composable
+private fun RetroButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Desk,
+    textColor: Color = Ink,
+    fontSize: TextUnit = 12.sp,
+    height: Dp = 40.dp,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Bevel(modifier.height(height)) {
+        Box(
+            Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+                .background(if (enabled) color else Desk)
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 8.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 24.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "AI",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+            Text(text, color = if (enabled) textColor else Shadow, fontSize = fontSize, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2)
+        }
+    }
+}
+
+@Composable
+private fun Led(label: String, on: Boolean, color: Color, modifier: Modifier = Modifier) {
+    Row(modifier.border(1.dp, Shadow).background(Color(0xFF1F1F1F)).padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).background(if (on) color else Color(0xFF3F3F3F), CircleShape))
+        Spacer(Modifier.width(4.dp))
+        Text(label, fontSize = 9.sp, fontFamily = Mono, color = if (on) Color.White else Color(0xFF8A8A8A))
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun Ticker(text: String) {
+    Text(
+        text,
+        color = Color(0xFFFFEB3B),
+        fontFamily = Mono,
+        fontSize = 11.sp,
+        maxLines = 1,
+        modifier = Modifier.fillMaxWidth().background(Color.Black).padding(vertical = 3.dp).basicMarquee(iterations = Int.MAX_VALUE)
+    )
+}
+
+@Composable
+private fun StatusStrip(text: String) {
+    Row(
+        Modifier.fillMaxWidth().background(Desk).border(1.dp, Shadow).padding(horizontal = 6.dp, vertical = 3.dp)
+    ) {
+        Text(text, fontSize = 9.sp, fontFamily = Mono, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun clock(pattern: String): String {
+    var now by remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            now = LocalDateTime.now()
+        }
+    }
+    return now.format(DateTimeFormatter.ofPattern(pattern, Locale.ENGLISH))
+}
+
+@Composable
+private fun MedTable(meds: List<Medicine>) {
+    Column(Modifier.fillMaxWidth().border(1.dp, Shadow)) {
+        Row(Modifier.background(Desk).padding(3.dp)) {
+            Text("MEDICINE", Modifier.weight(1.3f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text("DOSE / WHEN", Modifier.weight(1.7f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text("DAYS", Modifier.weight(0.5f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        }
+        meds.forEach { m ->
+            HorizontalDivider(color = Shadow, thickness = 0.5.dp)
+            Row(Modifier.padding(3.dp)) {
+                Text("${m.name} ${m.strength}".trim(), Modifier.weight(1.3f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Text(listOf(m.dose, m.frequency).filter { it.isNotEmpty() }.joinToString(", "), Modifier.weight(1.7f), fontSize = 10.sp)
+                Text(m.days, Modifier.weight(0.5f), fontSize = 10.sp, fontFamily = Mono)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Bullets(items: List<String>) {
+    items.forEach { Text("> $it", fontSize = 11.sp, color = Ink, modifier = Modifier.padding(vertical = 1.dp)) }
+}
+
+@Composable
+private fun Screenful(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Desk)
+            .systemBarsPadding(),
+        content = content
+    )
+}
+
+// ---------- screens ----------
+
+@Composable
+fun DialerScreen(viewModel: CallViewModel, onCallClick: () -> Unit) {
+    val context = LocalContext.current
+    val info = viewModel.serverInfo
+    val ai = info?.optJSONObject("ai")
+    val host = try { URL(viewModel.serverUrl).host } catch (_: Exception) { viewModel.serverUrl }
+    val tip = HEALTH_TIPS[LocalDate.now().dayOfYear % HEALTH_TIPS.size]
+
+    Screenful {
+        TitleBar("AI DOCTOR :: TELE-CONSULTATION TERMINAL", "v${BuildConfig.VERSION_NAME}")
+        Ticker("*** EMERGENCY? DIAL 108 ***   24x7 AI HEALTH CONSULTATION   ***   ALLOPATHY + AYURVEDA + HOMEOPATHY + GHARELU UPAY   ***   HINDI / ENGLISH SUPPORTED   ***   TIP: $tip   ***   COLLEGE DEMO - NOT A REAL DOCTOR   ***")
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(6.dp)) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Panel("System status", Modifier.weight(1.2f).fillMaxHeight()) {
+                    KV("Server", when (viewModel.serverState) {
+                        "Connected" -> "ONLINE"
+                        "Searching" -> "SEARCHING.."
+                        else -> "OFFLINE"
+                    }, if (viewModel.serverState == "Connected") Green else Red)
+                    KV("Host", if (viewModel.serverState == "Connected") host else "")
+                    KV("AI engine", (ai?.optString("state") ?: "").uppercase(), if (ai?.optString("state") == "ok") Green else Amber)
+                    KV("Mode", (info?.optString("mode") ?: "").uppercase())
+                    KV("Model", info?.optString("model")?.substringBefore(",") ?: "")
+                    KV("Active calls", info?.optInt("active_calls")?.toString() ?: "")
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "AI Doctor",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                val minutes = viewModel.seconds / 60
-                val secs = viewModel.seconds % 60
-                val timerText = "%02d:%02d".format(minutes, secs)
-                Text(
-                    text = "${viewModel.callStatus} • $timerText",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (viewModel.callStatus == "Speaking" || viewModel.callStatus == "Listening") {
-                        Color(0xFF16A34A)
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                Panel("Clock", Modifier.weight(0.8f).fillMaxHeight(), accent = Color(0xFF374151)) {
+                    Text(clock("HH:mm:ss"), fontFamily = Mono, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Green,
+                        modifier = Modifier.fillMaxWidth().background(Color.Black).padding(4.dp), textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(4.dp))
+                    Text(clock("EEE, dd MMM yyyy"), fontSize = 11.sp, fontFamily = Mono)
+                    Text("OPD: 24 x 7", fontSize = 11.sp, fontFamily = Mono)
+                    Text("Lang: EN / HI", fontSize = 11.sp, fontFamily = Mono)
+                    Text("Device: ${Build.MODEL}", fontSize = 10.sp, fontFamily = Mono, color = Muted, maxLines = 1)
+                }
+            }
+
+            Panel("Start consultation", accent = Green) {
+                RetroButton("[ CALL ]  START AI DOCTOR CONSULTATION", Modifier.fillMaxWidth(), color = Green, textColor = Color.White, fontSize = 14.sp, height = 56.dp, onClick = onCallClick)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    RetroButton("MY PRESCRIPTIONS", Modifier.weight(1f), fontSize = 10.sp) {
+                        viewModel.loadAppointments()
+                        viewModel.screen = Screen.APPOINTMENTS
                     }
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                val waveColor = if (viewModel.callStatus == "Listening") Color(0xFF16A34A) else MaterialTheme.colorScheme.surfaceVariant
-                val levels = viewModel.micLevels
-                Canvas(modifier = Modifier.width(220.dp).height(48.dp)) {
-                    val step = size.width / levels.size
-                    val stroke = step * 0.6f
-                    levels.forEachIndexed { i, level ->
-                        val half = maxOf(stroke / 2, level * size.height / 2)
-                        val x = step * i + step / 2
-                        drawLine(waveColor, Offset(x, center.y - half), Offset(x, center.y + half), stroke, StrokeCap.Round)
+                    RetroButton("SETTINGS", Modifier.weight(1f), fontSize = 10.sp) { viewModel.screen = Screen.SETTINGS }
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    RetroButton("EMERGENCY 108", Modifier.weight(1f), color = Red, textColor = Color.White, fontSize = 10.sp) {
+                        try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:108"))) } catch (_: Exception) {}
+                    }
+                    RetroButton("RECONNECT SERVER", Modifier.weight(1f), fontSize = 10.sp, enabled = viewModel.serverState != "Searching") { viewModel.retrySearch() }
+                }
+            }
+
+            Panel("Treatment systems available") {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("ALLOPATHY" to Color(0xFF1D4ED8), "AYURVEDA" to Color(0xFF15803D), "HOMEOPATHY" to Color(0xFF7E22CE), "GHARELU UPAY" to Amber).forEach { (name, c) ->
+                        Text(name, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f).background(c).border(1.dp, Ink).padding(vertical = 5.dp))
                     }
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                if (viewModel.agentLine.isNotEmpty()) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Text(
-                            text = viewModel.agentLine,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(16.dp),
-                            textAlign = TextAlign.Center
-                        )
+            Panel("Conditions handled (minor ailments)") {
+                CONDITIONS.chunked(2).forEach { pair ->
+                    Row {
+                        pair.forEach { Text(it, Modifier.weight(1f), fontSize = 11.sp, fontFamily = Mono) }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
+                Spacer(Modifier.height(3.dp))
+                Text("Chest pain, breathlessness, fainting, bleeding -> call 108, not this line.", fontSize = 10.sp, color = Red, fontWeight = FontWeight.Bold)
+            }
+
+            Panel("How it works", accent = Color(0xFF374151)) {
+                listOf(
+                    "1. Tap CALL and describe your problem (Hindi or English).",
+                    "2. AI doctor takes your history like a real doctor.",
+                    "3. Give name, age, gender and allergies.",
+                    "4. Confirm the summary.",
+                    "5. Get a PDF prescription: allopathic, Ayurvedic, homeopathic and home remedies."
+                ).forEach { Text(it, fontSize = 11.sp) }
+            }
+
+            Panel("Health tip of the day", accent = Amber) {
+                Text(tip, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        StatusStrip("READY | ${viewModel.serverState.uppercase()} | ${viewModel.serverUrl.ifEmpty { "no server" }} | (c) 2026 Call Pilot | Demo - not medical advice")
+    }
+}
+
+@Composable
+fun InCallScreen(viewModel: CallViewModel) {
+    val status = viewModel.callStatus
+    val sheet = viewModel.caseSheet
+    val timer = "%02d:%02d".format(viewModel.seconds / 60, viewModel.seconds % 60)
+    val stage = when {
+        sheet.containsKey("condition") && sheet.containsKey("allergies") -> 4
+        sheet.containsKey("patient_name") || sheet.containsKey("age") -> 3
+        sheet.containsKey("symptom_details") || sheet.containsKey("associated_symptoms") -> 2
+        sheet.containsKey("symptoms") -> 1
+        else -> 0
+    }
+    val logScroll = rememberScrollState()
+    LaunchedEffect(viewModel.log.size, viewModel.callerLine) { logScroll.animateScrollTo(logScroll.maxValue) }
+
+    Screenful {
+        TitleBar("CONSULTATION IN PROGRESS  * REC", timer)
+        Row(Modifier.fillMaxWidth().background(Color(0xFF2B2B2B)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Led("MIC", status == "Listening", Green, Modifier.weight(1f))
+            Led("AI", status == "Thinking", Amber, Modifier.weight(1f))
+            Led("TTS", status == "Speaking", Color(0xFF38BDF8), Modifier.weight(1f))
+            Led("NET", viewModel.serverState == "Connected", Green, Modifier.weight(1f))
+            Led("MUTE", viewModel.muted, Red, Modifier.weight(1f))
+        }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(6.dp)) {
+            Panel("Consultation stage") {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    listOf("COMPLAINT", "HISTORY", "PATIENT", "CONFIRM", "Rx").forEachIndexed { i, s ->
+                        Text(s, fontSize = 8.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                            color = if (i <= stage) Color.White else Muted,
+                            modifier = Modifier.weight(1f).background(if (i < stage) Green else if (i == stage) Navy else Desk).border(1.dp, Shadow).padding(vertical = 4.dp))
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Panel("Audio monitor", Modifier.weight(1f), accent = Color(0xFF374151)) {
+                    val levels = viewModel.micLevels
+                    val wave = if (status == "Listening") Color(0xFF22C55E) else Color(0xFF3F3F3F)
+                    Canvas(Modifier.fillMaxWidth().height(40.dp).background(Color.Black)) {
+                        val step = size.width / levels.size
+                        levels.forEachIndexed { i, level ->
+                            val half = maxOf(1f, level * size.height / 2)
+                            val x = step * i + step / 2
+                            drawLine(wave, Offset(x, center.y - half), Offset(x, center.y + half), step * 0.7f)
+                        }
+                    }
+                    Text("STATUS: ${status.uppercase()}", fontSize = 10.sp, fontFamily = Mono, fontWeight = FontWeight.Bold)
+                    Text("SPK: ${if (viewModel.speaker) "LOUD" else "EARPIECE"}", fontSize = 10.sp, fontFamily = Mono)
+                }
+                Panel("Patient", Modifier.weight(1f), accent = Color(0xFF374151)) {
+                    Text(sheet["patient_name"] ?: "UNREGISTERED", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text("${sheet["age"] ?: "--"} yrs / ${sheet["gender"] ?: "--"}", fontSize = 10.sp, fontFamily = Mono)
+                    Text("Severity: ${(sheet["severity"] ?: "pending").uppercase()}", fontSize = 10.sp, fontFamily = Mono,
+                        color = when (sheet["severity"]) { "severe" -> Red; "moderate" -> Amber; "mild" -> Green; else -> Muted })
+                    Text("Fields: ${sheet.size}/${CASE_FIELDS.size}", fontSize = 10.sp, fontFamily = Mono)
+                }
+            }
+            Panel("AI doctor says", accent = Green) {
+                Text(viewModel.agentLine.ifEmpty { "Connecting..." }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 if (viewModel.callerLine.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "You: ${viewModel.callerLine}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text("YOU: ${viewModel.callerLine}", fontSize = 11.sp, color = Muted, fontFamily = Mono)
                 }
             }
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(bottom = 24.dp)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(32.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = { viewModel.toggleMute() },
-                        modifier = Modifier.size(56.dp),
-                        shape = CircleShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (viewModel.muted) Color(0xFFDC2626) else MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
-                        Text(
-                            text = if (viewModel.muted) "Unmute" else "Mute",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-
-                    Button(
-                        onClick = { viewModel.toggleSpeaker() },
-                        modifier = Modifier.size(56.dp),
-                        shape = CircleShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (viewModel.speaker) Color(0xFF16A34A) else MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
-                        Text(
-                            text = if (viewModel.speaker) "Speaker" else "Ear",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
+            Panel("Live case sheet") {
+                CASE_FIELDS.forEach { (key, label) -> KV(label, sheet[key] ?: "") }
+            }
+            Panel("Transcript log", accent = Color(0xFF374151)) {
+                Column(Modifier.fillMaxWidth().height(150.dp).background(Color.Black).verticalScroll(logScroll).padding(4.dp)) {
+                    viewModel.log.forEach { (who, text) ->
+                        Text("[$who] $text", fontSize = 10.sp, fontFamily = Mono, color = if (who == "AI") Color(0xFF4ADE80) else Color(0xFFFDE047))
                     }
                 }
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                Button(
-                    onClick = { viewModel.endCall() },
-                    modifier = Modifier.size(72.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFDC2626)
-                    ),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Call,
-                        contentDescription = "End Call",
-                        modifier = Modifier
-                            .size(36.dp)
-                            .rotate(135f),
-                        tint = Color.White
-                    )
+            }
+        }
+        Row(Modifier.fillMaxWidth().background(Desk).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            RetroButton(if (viewModel.muted) "UNMUTE" else "MUTE", Modifier.weight(1f), color = if (viewModel.muted) Amber else Desk,
+                textColor = if (viewModel.muted) Color.White else Ink, height = 52.dp) { viewModel.toggleMute() }
+            RetroButton(if (viewModel.speaker) "SPEAKER ON" else "SPEAKER", Modifier.weight(1f), color = if (viewModel.speaker) Navy else Desk,
+                textColor = if (viewModel.speaker) Color.White else Ink, height = 52.dp) { viewModel.toggleSpeaker() }
+            Bevel(Modifier.weight(1.2f).height(52.dp)) {
+                Row(Modifier.fillMaxSize().background(Red).clickable { viewModel.endCall() }, horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Call, contentDescription = "End call", tint = Color.White, modifier = Modifier.size(22.dp).rotate(135f))
+                    Spacer(Modifier.width(4.dp))
+                    Text("END CALL", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         }
@@ -408,422 +517,163 @@ fun InCallScreen(viewModel: CallViewModel) {
 fun EndedScreen(viewModel: CallViewModel, onDone: () -> Unit) {
     val context = LocalContext.current
     val ended = viewModel.ended
+    val rx = ended.rx
     var autoOpened by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(ended.pdfUrl) {
         if (!autoOpened && !ended.pdfUrl.isNullOrEmpty()) {
             autoOpened = true
-            val fullUrl = formatFullPdfUrl(viewModel.serverUrl, ended.pdfUrl)
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl))
-            try {
-                context.startActivity(intent)
-            } catch (_: Exception) {}
+            openUrl(context, formatFullPdfUrl(viewModel.serverUrl, ended.pdfUrl))
         }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            if (!ended.bookingId.isNullOrEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = if (ended.bookingId.startsWith("RX-")) "Prescription ready" else "Appointment confirmed",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF16A34A)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = ended.bookingId,
-                            style = MaterialTheme.typography.headlineLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        if (ended.rx != null) {
-                            if (ended.rx.condition.isNotEmpty()) {
-                                Text(
-                                    text = "Condition: ${ended.rx.condition}",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
-                            if (ended.rx.medicines.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Medicines:",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                ended.rx.medicines.forEach { med ->
-                                    val details = listOf(
-                                        med.strength.takeIf { it.isNotEmpty() },
-                                        med.dose.takeIf { it.isNotEmpty() },
-                                        med.frequency.takeIf { it.isNotEmpty() },
-                                        med.days.takeIf { it.isNotEmpty() }?.let { d ->
-                                            if (d.contains("day", ignoreCase = true)) d else "$d days"
-                                        }
-                                    ).filterNotNull().joinToString(", ")
-                                    val medLine = if (details.isNotEmpty()) "${med.name} - $details" else med.name
-                                    Text(
-                                        text = "• $medLine",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        if (!ended.doctor.isNullOrEmpty()) {
-                            Text(
-                                text = "Doctor: ${ended.doctor}",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        if (!ended.department.isNullOrEmpty()) {
-                            Text(
-                                text = "Department: ${ended.department}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        if (!ended.date.isNullOrEmpty()) {
-                            Text(
-                                text = "Date: ${formatSpokenDate(ended.date)}",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        if (!ended.time.isNullOrEmpty()) {
-                            Text(
-                                text = "Time: ${ended.time}",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        if (!ended.branch.isNullOrEmpty()) {
-                            Text(
-                                text = "Branch: ${ended.branch}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        if (!ended.pdfUrl.isNullOrEmpty()) {
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Button(
-                                onClick = {
-                                    val fullUrl = formatFullPdfUrl(viewModel.serverUrl, ended.pdfUrl)
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl))
-                                    try {
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) {}
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
-                            ) {
-                                Text(if (ended.bookingId.startsWith("RX-")) "Open prescription PDF" else "Open booking PDF")
-                            }
-                        }
+    Screenful {
+        TitleBar("CONSULTATION SUMMARY", "%02d:%02d".format(viewModel.seconds / 60, viewModel.seconds % 60))
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(6.dp)) {
+            when {
+                !ended.bookingId.isNullOrEmpty() -> {
+                    val isRx = ended.bookingId.startsWith("RX-")
+                    Panel(if (isRx) "Prescription issued" else "Appointment confirmed", accent = Green) {
+                        Text(ended.bookingId, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, fontFamily = Mono, color = Green)
+                        if (rx != null && rx.condition.isNotEmpty()) KV("Assessment", rx.condition)
+                        if (!ended.doctor.isNullOrEmpty()) KV("Doctor", ended.doctor)
+                        if (!ended.department.isNullOrEmpty()) KV("Department", ended.department)
+                        if (!ended.date.isNullOrEmpty()) KV("Date", formatSpokenDate(ended.date))
+                        if (!ended.time.isNullOrEmpty()) KV("Time", ended.time)
+                        if (!ended.branch.isNullOrEmpty()) KV("Branch", ended.branch)
+                        KV("Issued", LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", Locale.ENGLISH)))
+                    }
+                    if (rx != null) {
+                        if (rx.medicines.isNotEmpty()) Panel("1. Allopathic (OTC)", accent = Color(0xFF1D4ED8)) { MedTable(rx.medicines) }
+                        if (rx.ayurvedic.isNotEmpty()) Panel("2. Ayurvedic option", accent = Color(0xFF15803D)) { MedTable(rx.ayurvedic) }
+                        if (rx.homeopathic.isNotEmpty()) Panel("3. Homeopathic option", accent = Color(0xFF7E22CE)) { MedTable(rx.homeopathic) }
+                        if (rx.homeRemedies.isNotEmpty()) Panel("4. Home remedies (gharelu upay)", accent = Amber) { Bullets(rx.homeRemedies) }
+                        if (rx.advice.isNotEmpty()) Panel("Advice", accent = Color(0xFF374151)) { Bullets(rx.advice) }
+                        if (rx.seeDoctorIf.isNotEmpty()) Panel("See a doctor immediately if", accent = Red) { Bullets(rx.seeDoctorIf) }
+                        Text("Take ONE system at a time. AI college demo - not a real prescription.", fontSize = 10.sp, color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(4.dp))
                     }
                 }
-            } else if (ended.emergency) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF451A1A)),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Emergency Helpline",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFCA5A5)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = ended.message.ifEmpty { "Please dial 108 immediately." },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White,
-                            textAlign = TextAlign.Center
-                        )
+                ended.emergency -> Panel("!!! Emergency !!!", accent = Red) {
+                    Text(ended.message.ifEmpty { "Please dial 108 immediately." }, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Red)
+                    Spacer(Modifier.height(6.dp))
+                    RetroButton("DIAL 108 NOW", Modifier.fillMaxWidth(), color = Red, textColor = Color.White, height = 48.dp) {
+                        try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:108"))) } catch (_: Exception) {}
                     }
                 }
-            } else {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = ended.message.ifEmpty { "Call ended" },
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center
-                        )
-                    }
+                else -> Panel("Call status", accent = Color(0xFF374151)) {
+                    Text(ended.message.ifEmpty { "Call ended" }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Button(
-                onClick = onDone,
-                modifier = Modifier
-                    .fillMaxWidth(0.5f)
-                    .height(48.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Text("Done", color = Color.White)
+            if (viewModel.caseSheet.isNotEmpty()) {
+                Panel("Case sheet") {
+                    CASE_FIELDS.filter { viewModel.caseSheet.containsKey(it.first) }.forEach { (k, label) -> KV(label, viewModel.caseSheet[k] ?: "") }
+                }
             }
+            if (viewModel.log.isNotEmpty()) {
+                Panel("Call transcript (${viewModel.log.size} lines)", accent = Color(0xFF374151)) {
+                    viewModel.log.forEach { (who, text) -> Text("[$who] $text", fontSize = 10.sp, fontFamily = Mono) }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (!ended.pdfUrl.isNullOrEmpty()) {
+                RetroButton("OPEN PDF", Modifier.weight(1f), color = Green, textColor = Color.White, height = 48.dp) {
+                    openUrl(context, formatFullPdfUrl(viewModel.serverUrl, ended.pdfUrl))
+                }
+            }
+            RetroButton("DONE", Modifier.weight(1f), height = 48.dp, onClick = onDone)
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppointmentsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
-
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = { Text("My prescriptions", color = MaterialTheme.colorScheme.onBackground) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-            )
-        }
-    ) { innerPadding ->
-        if (viewModel.appointments.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "No prescriptions yet",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+    Screenful {
+        TitleBar("MY PRESCRIPTIONS / RECORDS", "${viewModel.appointments.size} found", onBack = onBack)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(6.dp)) {
+            if (viewModel.appointments.isEmpty()) {
+                Panel("No records") { Text("No prescriptions yet. Complete a consultation to see it here.", fontSize = 12.sp) }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(viewModel.appointments) { appt ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = appt.bookingId,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF16A34A)
-                                )
-                                if (appt.pdfUrl.isNotEmpty()) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            val fullUrl = formatFullPdfUrl(viewModel.serverUrl, appt.pdfUrl)
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(fullUrl))
-                                            try {
-                                                context.startActivity(intent)
-                                            } catch (_: Exception) {}
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                                    ) {
-                                        Text("PDF", fontSize = 12.sp)
-                                    }
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            if (appt.doctor.isNotEmpty()) {
-                                Text(
-                                    text = "Doctor: ${appt.doctor}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            if (appt.department.isNotEmpty()) {
-                                Text(
-                                    text = "Department: ${appt.department}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (appt.appointmentDate.isNotEmpty()) {
-                                Text(
-                                    text = "Date: ${formatSpokenDate(appt.appointmentDate)}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            if (appt.appointmentTime.isNotEmpty()) {
-                                Text(
-                                    text = "Time: ${appt.appointmentTime}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            if (appt.hospitalBranch.isNotEmpty()) {
-                                Text(
-                                    text = "Branch: ${appt.hospitalBranch}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+            viewModel.appointments.forEachIndexed { i, appt ->
+                Panel("#${i + 1}  ${appt.bookingId}", accent = if (appt.bookingId.startsWith("RX-")) Green else Navy) {
+                    KV("Patient", appt.patientName)
+                    KV("Age / Gender", "${appt.age} / ${appt.gender}")
+                    KV("Complaint", appt.symptoms)
+                    appt.rx?.let { rx ->
+                        KV("Assessment", rx.condition)
+                        KV("Allopathic", rx.medicines.joinToString { it.name })
+                        KV("Ayurvedic", rx.ayurvedic.joinToString { it.name })
+                        KV("Homeopathic", rx.homeopathic.joinToString { it.name })
+                    }
+                    if (appt.doctor.isNotEmpty()) KV("Doctor", appt.doctor)
+                    if (appt.appointmentDate.isNotEmpty()) KV("Date", "${formatSpokenDate(appt.appointmentDate)} ${appt.appointmentTime}")
+                    KV("Created", appt.createdAt.take(16).replace("T", " "))
+                    if (appt.pdfUrl.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        RetroButton("VIEW PDF", Modifier.fillMaxWidth(), height = 32.dp, fontSize = 11.sp) {
+                            openUrl(context, formatFullPdfUrl(viewModel.serverUrl, appt.pdfUrl))
                         }
                     }
                 }
             }
         }
+        StatusStrip("RECORDS STORED ON SERVER ${viewModel.serverUrl}")
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
     var urlText by remember { mutableStateOf(viewModel.serverUrl) }
+    LaunchedEffect(viewModel.serverUrl) { urlText = viewModel.serverUrl }
 
-    LaunchedEffect(viewModel.serverUrl) {
-        urlText = viewModel.serverUrl
-    }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var updateMsg by remember { mutableStateOf("Version ${BuildConfig.VERSION_NAME}") }
+    var update by remember { mutableStateOf<AppUpdate?>(null) }
+    var apkFile by remember { mutableStateOf<java.io.File?>(null) }
+    var busy by remember { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings", color = MaterialTheme.colorScheme.onBackground) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(24.dp)
-        ) {
-            OutlinedTextField(
-                value = urlText,
-                onValueChange = { urlText = it },
-                label = { Text("Server URL") },
-                placeholder = { Text("http://192.168.137.1:8001") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0xFF16A34A),
-                    focusedLabelColor = Color(0xFF16A34A),
-                    cursorColor = Color(0xFF16A34A)
-                )
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "Status: ${viewModel.serverState}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = when (viewModel.serverState) {
-                    "Connected" -> Color(0xFF16A34A)
-                    "Searching" -> MaterialTheme.colorScheme.onSurfaceVariant
-                    else -> Color(0xFFDC2626)
+    Screenful {
+        TitleBar("SETTINGS / CONTROL PANEL", onBack = onBack)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(6.dp)) {
+            Panel("Server connection") {
+                Text("Server URL:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Bevel(Modifier.fillMaxWidth(), pressed = true) {
+                    BasicTextField(
+                        value = urlText,
+                        onValueChange = { urlText = it },
+                        singleLine = true,
+                        textStyle = UiTextStyle(fontFamily = Mono, fontSize = 13.sp, color = Ink),
+                        modifier = Modifier.fillMaxWidth().background(Color.White).padding(6.dp)
+                    )
                 }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                OutlinedButton(
-                    onClick = { viewModel.retrySearch() },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Find automatically")
-                }
-
-                Button(
-                    onClick = { viewModel.saveServerUrl(urlText) },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
-                ) {
-                    Text("Save")
+                Text("e.g. http://192.168.137.1:8001", fontSize = 10.sp, color = Muted)
+                Spacer(Modifier.height(4.dp))
+                KV("Status", viewModel.serverState.uppercase(), when (viewModel.serverState) {
+                    "Connected" -> Green
+                    "Searching" -> Amber
+                    else -> Red
+                })
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    RetroButton("FIND AUTOMATICALLY", Modifier.weight(1f), fontSize = 10.sp) { viewModel.retrySearch() }
+                    RetroButton("SAVE", Modifier.weight(1f), color = Green, textColor = Color.White) { viewModel.saveServerUrl(urlText) }
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
-
-            val context = LocalContext.current
-            val scope = rememberCoroutineScope()
-            var updateMsg by remember { mutableStateOf("Version ${BuildConfig.VERSION_NAME}") }
-            var update by remember { mutableStateOf<AppUpdate?>(null) }
-            var apkFile by remember { mutableStateOf<java.io.File?>(null) }
-            var busy by remember { mutableStateOf(false) }
-
-            Text(updateMsg, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(
-                enabled = !busy,
-                onClick = {
+            Panel("Software update", accent = Color(0xFF374151)) {
+                Text(updateMsg, fontSize = 12.sp, fontFamily = Mono)
+                Spacer(Modifier.height(6.dp))
+                RetroButton(
+                    when {
+                        apkFile != null -> "INSTALL UPDATE"
+                        update != null -> "DOWNLOAD AND INSTALL"
+                        else -> "CHECK FOR UPDATES"
+                    },
+                    Modifier.fillMaxWidth(),
+                    enabled = !busy
+                ) {
                     val ready = apkFile
                     val found = update
                     when {
@@ -853,17 +703,18 @@ fun SettingsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
                             busy = false
                         }
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    when {
-                        apkFile != null -> "Install update"
-                        update != null -> "Download and install"
-                        else -> "Check for updates"
-                    }
-                )
+                }
+            }
+
+            Panel("About this device", accent = Color(0xFF374151)) {
+                KV("App", "Call Pilot AI Doctor")
+                KV("Version", "${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})")
+                KV("Device", "${Build.MANUFACTURER} ${Build.MODEL}")
+                KV("Android", "${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
+                KV("Speech", "Google speech, en-IN")
+                KV("Server", viewModel.serverUrl)
             }
         }
+        StatusStrip("CONTROL PANEL | ${viewModel.serverState.uppercase()}")
     }
 }

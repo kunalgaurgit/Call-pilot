@@ -47,6 +47,8 @@ def client(tmp_path):
                 "condition": "headache",
                 "symptoms": "mild headache",
                 "duration_days": 1,
+                "symptom_details": "dull pressing pain on both temples, worse on screens",
+                "associated_symptoms": "none",
                 "severity": "mild",
                 "patient_name": "Rahul",
                 "age": 28,
@@ -65,6 +67,8 @@ def client(tmp_path):
                 "condition": "headache",
                 "symptoms": "severe headache",
                 "duration_days": 1,
+                "symptom_details": "dull pressing pain on both temples, worse on screens",
+                "associated_symptoms": "none",
                 "severity": "severe",
                 "patient_name": "Rahul",
                 "age": 28,
@@ -82,6 +86,8 @@ def client(tmp_path):
                 "condition": "headache",
                 "symptoms": "headache",
                 "duration_days": 1,
+                "symptom_details": "dull pressing pain on both temples, worse on screens",
+                "associated_symptoms": "none",
                 "severity": "mild",
                 "patient_name": "Child",
                 "age": 8,
@@ -99,6 +105,8 @@ def client(tmp_path):
                 "condition": "headache",
                 "symptoms": "headache",
                 "duration_days": 5,
+                "symptom_details": "dull pressing pain on both temples, worse on screens",
+                "associated_symptoms": "none",
                 "severity": "mild",
                 "patient_name": "Rahul",
                 "age": 28,
@@ -116,6 +124,8 @@ def client(tmp_path):
                 "condition": "fever",
                 "symptoms": "fever",
                 "duration_days": 1,
+                "symptom_details": "dull pressing pain on both temples, worse on screens",
+                "associated_symptoms": "none",
                 "severity": "mild",
                 "patient_name": "Rahul",
                 "age": 28,
@@ -133,6 +143,8 @@ def client(tmp_path):
                 "condition": "muscle_pain",
                 "symptoms": "muscle sprain",
                 "duration_days": 2,
+                "symptom_details": "dull pressing pain on both temples, worse on screens",
+                "associated_symptoms": "none",
                 "severity": "mild",
                 "patient_name": "Priya",
                 "age": 26,
@@ -151,6 +163,8 @@ def client(tmp_path):
                 "condition": "muscle_pain",
                 "symptoms": "muscle sprain",
                 "duration_days": 2,
+                "symptom_details": "dull pressing pain on both temples, worse on screens",
+                "associated_symptoms": "none",
                 "severity": "mild",
                 "patient_name": "Priya",
                 "age": 26,
@@ -169,6 +183,8 @@ def client(tmp_path):
                 "condition": "fracture",
                 "symptoms": "broken bone",
                 "duration_days": 1,
+                "symptom_details": "dull pressing pain on both temples, worse on screens",
+                "associated_symptoms": "none",
                 "severity": "mild",
                 "patient_name": "Rahul",
                 "age": 28,
@@ -210,6 +226,8 @@ def test_agent_submit_creates_rx_and_booking_id(ai_doctor_config):
                     "args": {
                         "symptoms": "headache",
                         "duration_days": 1,
+                        "symptom_details": "dull pressing pain on both temples, worse on screens",
+                        "associated_symptoms": "none",
                         "severity": "mild",
                     },
                 }
@@ -303,6 +321,8 @@ def test_agent_submit_referred_on_severe_symptoms(ai_doctor_config):
                     "args": {
                         "symptoms": "headache",
                         "duration_days": 1,
+                        "symptom_details": "dull pressing pain on both temples, worse on screens",
+                        "associated_symptoms": "none",
                         "severity": "severe",
                         "patient_name": "Rahul Sharma",
                         "age": 28,
@@ -408,6 +428,8 @@ def test_fake_llm_demo_end_to_end_and_pdf(client):
         "fields": {
             "patient_name": "Test Patient",
             "symptoms": "chest pain",
+            "symptom_details": "dull pressing pain on both temples, worse on screens",
+            "associated_symptoms": "none",
             "severity": "severe",
         },
     })
@@ -420,3 +442,12 @@ def test_fake_llm_demo_end_to_end_and_pdf(client):
 
     ref_booking_json = client.get(f"/api/bookings/{ref_sid}")
     assert ref_booking_json.status_code == 404
+
+
+def test_build_rx_includes_ayurvedic_homeopathic_and_home_remedies(ai_doctor_config):
+    base = {"condition": "headache", "severity": "mild", "age": 30, "duration_days": 1, "allergies": "none"}
+    rx = agent.build_rx(ai_doctor_config, base)
+    assert rx["ayurvedic"] and rx["homeopathic"] and rx["home_remedies"]
+    assert "Ayurveda" in rx["spoken"] and "homeopathy" in rx["spoken"] and "Home remedy" in rx["spoken"]
+    pregnant = agent.build_rx(ai_doctor_config, {**base, "gender": "female", "pregnant": "yes"})
+    assert pregnant["ayurvedic"] == [] and pregnant["homeopathic"]

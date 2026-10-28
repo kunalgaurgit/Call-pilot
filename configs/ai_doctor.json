@@ -5,28 +5,53 @@
   "greeting": "Hello, I am your AI doctor assistant. Please note this is an AI demo and not a real doctor. What health problem are you experiencing today?",
   "consent_notice": "This call is handled by an AI assistant demo and is not a real doctor or medical diagnosis. It provides guidance and demo prescriptions for minor issues only. In an emergency call 108.",
   "tone": "warm casual family doctor, short spoken sentences",
-  "action": {"type": "prescription", "name": "create_prescription"},
-  "escalation_phrases": ["human", "real person", "receptionist", "talk to someone", "operator"],
+  "action": {
+    "type": "prescription",
+    "name": "create_prescription"
+  },
+  "escalation_phrases": [
+    "human",
+    "real person",
+    "receptionist",
+    "talk to someone",
+    "operator"
+  ],
   "escalation_message": "Of course. I'm transferring you to our staff. Please stay on the line.",
   "referral_message": "Based on what you told me, this needs a real doctor to examine you. Please contact or visit a doctor soon. Take care.",
   "emergency_phrases": [
-    "chest pain", "heart attack", "can't breathe", "cannot breathe", "breathing difficulty",
-    "difficulty breathing", "unconscious", "fainted", "heavy bleeding", "severe bleeding",
-    "stroke", "seizure", "suicide", "overdose", "poison", "blood in vomit", "severe allergic", "face swelling"
+    "chest pain",
+    "heart attack",
+    "can't breathe",
+    "cannot breathe",
+    "breathing difficulty",
+    "difficulty breathing",
+    "unconscious",
+    "fainted",
+    "heavy bleeding",
+    "severe bleeding",
+    "stroke",
+    "seizure",
+    "suicide",
+    "overdose",
+    "poison",
+    "blood in vomit",
+    "severe allergic",
+    "face swelling"
   ],
   "emergency_message": "This sounds like a medical emergency. Please call 108 for an ambulance right now, or go to the nearest emergency room. I'm ending this call so you can get help immediately.",
-  "max_turns": 24,
-  "summary_template": "{patient_name} ({age}, {gender}) - {condition}. Symptoms: {symptoms} ({duration_days} days, {severity}).",
+  "max_turns": 30,
+  "summary_template": "{patient_name} ({age}, {gender}) - {condition}. Symptoms: {symptoms}; {symptom_details}. Other: {associated_symptoms} ({duration_days} days, {severity}).",
   "done_template": "Here is your prescription, {patient_name}. {rx_spoken} Your prescription number is {rx_id}. It is downloading on your phone now. This is an AI demo, not a real prescription, so please check with a doctor or pharmacist before taking any medicine. Get well soon.",
   "rules": [
-    "First ask what is happening, since when, how bad the symptoms are, and if there are other symptoms.",
+    "Talk like a caring family doctor taking a history: after the complaint, ask about its details, other symptoms, onset and what they tried, one or two questions per turn, briefly reacting to each answer before the next question. Ask at least four history questions before the patient details.",
     "Then collect the patient details: full name, age, gender, and any medicine allergies (or 'none'). If female between 12 and 50, ask about pregnancy.",
     "Pick ONE condition from the formulary based on the symptoms and update condition without asking the caller.",
     "If the condition is severe, unclear, not in the formulary, red flags are present, or the caller is under 12, call escalate with a reason starting with 'referral:'.",
     "When all required details are gathered, read back a short summary and ask 'Shall I prepare your prescription?'.",
     "Only call submit with confirmed=true after the caller confirms.",
     "Never name any medicine before submit returns ok, and never name medicines outside the formulary.",
-    "If the caller describes a medical emergency, call escalate with reason 'medical emergency'."
+    "If the caller describes a medical emergency, call escalate with reason 'medical emergency'.",
+    "The prescription includes allopathic, Ayurvedic, homeopathic and home remedy options; mention that when you offer it."
   ],
   "fields": [
     {
@@ -43,15 +68,44 @@
       "required": true,
       "min": 0,
       "max": 365,
-      "prompt": "Ask how many days the symptoms have lasted."
+      "prompt": "Ask since when it started (today counts as 1 day) and whether it is constant or comes and goes."
+    },
+    {
+      "name": "symptom_details",
+      "label": "Symptom details",
+      "type": "text",
+      "required": true,
+      "prompt": "Take a history like a real doctor, one or two questions per turn: exactly where it is, what it feels like (for pain: throbbing, pressing, burning, cramping), what makes it better or worse, and how it affects sleep, food and work. Save a short note of the answers."
+    },
+    {
+      "name": "associated_symptoms",
+      "label": "Other symptoms",
+      "type": "text",
+      "required": true,
+      "prompt": "Ask about other symptoms that matter for this complaint, for example headache: nausea, vomiting, light sensitivity, blurred vision, fever, neck stiffness; stomach pain: vomiting, loose motions, fever, burning, what was eaten; cough or cold: fever, phlegm colour, breathlessness. Save them, or 'none'."
+    },
+    {
+      "name": "tried_so_far",
+      "label": "Tried so far",
+      "type": "text",
+      "required": false,
+      "prompt": "Ask whether they have taken any medicine or home remedy for this already, and if it helped."
     },
     {
       "name": "severity",
       "label": "Severity",
       "type": "enum",
       "required": true,
-      "enum": ["mild", "moderate", "severe"],
-      "prompt": "Ask how severe the symptoms are: mild, moderate, or severe."
+      "enum": [
+        "mild",
+        "moderate",
+        "severe"
+      ],
+      "prompt": "Never ask the caller to choose mild, moderate or severe. Judge it yourself from the history: mild = normal daily routine possible; moderate = work or sleep disturbed but manageable; severe = cannot work or sleep, worst ever, or getting worse fast.",
+      "after": [
+        "symptom_details",
+        "associated_symptoms"
+      ]
     },
     {
       "name": "patient_name",
@@ -74,7 +128,11 @@
       "label": "Gender",
       "type": "enum",
       "required": true,
-      "enum": ["male", "female", "other"],
+      "enum": [
+        "male",
+        "female",
+        "other"
+      ],
       "prompt": "Ask for the patient's gender."
     },
     {
@@ -82,7 +140,10 @@
       "label": "Pregnant",
       "type": "enum",
       "required": false,
-      "enum": ["yes", "no"],
+      "enum": [
+        "yes",
+        "no"
+      ],
       "prompt": "Ask if the patient is pregnant (only if female aged 12 to 50)."
     },
     {
@@ -97,7 +158,10 @@
       "label": "Condition",
       "type": "enum",
       "required": true,
-      "after": ["symptoms", "severity"],
+      "after": [
+        "symptoms",
+        "severity"
+      ],
       "enum": [
         "common_cold",
         "fever",
@@ -132,7 +196,10 @@
           "dose": "1 tablet",
           "frequency": "every 6 to 8 hours as needed",
           "days": 3,
-          "allergy_keys": ["paracetamol", "acetaminophen"],
+          "allergy_keys": [
+            "paracetamol",
+            "acetaminophen"
+          ],
           "avoid_pregnant": false
         },
         {
@@ -141,7 +208,9 @@
           "dose": "1 tablet",
           "frequency": "once daily at bedtime",
           "days": 3,
-          "allergy_keys": ["cetirizine"],
+          "allergy_keys": [
+            "cetirizine"
+          ],
           "avoid_pregnant": false
         },
         {
@@ -150,7 +219,9 @@
           "dose": "1 to 2 sprays in each nostril",
           "frequency": "2 to 3 times daily",
           "days": 5,
-          "allergy_keys": ["saline"],
+          "allergy_keys": [
+            "saline"
+          ],
           "avoid_pregnant": false
         }
       ],
@@ -163,6 +234,41 @@
         "Fever exceeds 102 F or lasts longer than 3 days.",
         "Shortness of breath, chest pain, or wheezing develops.",
         "Symptoms worsen significantly after 5 days."
+      ],
+      "ayurvedic": [
+        {
+          "name": "Sitopaladi Churna",
+          "dose": "half teaspoon with honey",
+          "frequency": "twice daily after meals",
+          "days": 5
+        },
+        {
+          "name": "Tulsi Ginger Kadha",
+          "dose": "1 cup warm",
+          "frequency": "twice daily",
+          "days": 5
+        }
+      ],
+      "homeopathic": [
+        {
+          "name": "Allium Cepa",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        },
+        {
+          "name": "Arsenicum Album",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        }
+      ],
+      "home_remedies": [
+        "Steam inhalation with a few drops of eucalyptus oil, twice daily.",
+        "Warm water with honey and lemon in the morning.",
+        "Turmeric milk (haldi doodh) at bedtime."
       ]
     },
     "fever": {
@@ -176,7 +282,10 @@
           "dose": "1 tablet",
           "frequency": "every 6 to 8 hours as needed",
           "days": 3,
-          "allergy_keys": ["paracetamol", "acetaminophen"],
+          "allergy_keys": [
+            "paracetamol",
+            "acetaminophen"
+          ],
           "avoid_pregnant": false
         }
       ],
@@ -189,6 +298,41 @@
         "Fever exceeds 102 F or lasts beyond 3 days.",
         "Severe headache, stiff neck, rash, or confusion develops.",
         "Difficulty breathing or persistent vomiting occurs."
+      ],
+      "ayurvedic": [
+        {
+          "name": "Giloy (Guduchi) Ghan Vati",
+          "dose": "1 tablet",
+          "frequency": "twice daily after meals",
+          "days": 3
+        },
+        {
+          "name": "Sudarshan Ghan Vati",
+          "dose": "1 tablet",
+          "frequency": "twice daily after meals",
+          "days": 3
+        }
+      ],
+      "homeopathic": [
+        {
+          "name": "Belladonna",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        },
+        {
+          "name": "Ferrum Phosphoricum",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        }
+      ],
+      "home_remedies": [
+        "Sponge the forehead and body with lukewarm (not cold) water.",
+        "Drink ORS, coconut water or plain water every hour.",
+        "Light food like khichdi or dal rice."
       ]
     },
     "headache": {
@@ -202,7 +346,10 @@
           "dose": "1 tablet",
           "frequency": "every 6 to 8 hours as needed",
           "days": 2,
-          "allergy_keys": ["paracetamol", "acetaminophen"],
+          "allergy_keys": [
+            "paracetamol",
+            "acetaminophen"
+          ],
           "avoid_pregnant": false
         }
       ],
@@ -215,6 +362,41 @@
         "Sudden severe explosive headache.",
         "Headache following head trauma or a fall.",
         "Accompanied by vision changes, weakness, or fever."
+      ],
+      "ayurvedic": [
+        {
+          "name": "Pathyadi Kadha",
+          "dose": "15 ml with equal water",
+          "frequency": "twice daily before meals",
+          "days": 3
+        },
+        {
+          "name": "Brahmi Vati",
+          "dose": "1 tablet",
+          "frequency": "twice daily after meals",
+          "days": 3
+        }
+      ],
+      "homeopathic": [
+        {
+          "name": "Belladonna",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        },
+        {
+          "name": "Nux Vomica",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        }
+      ],
+      "home_remedies": [
+        "Massage the temples gently with peppermint or balm oil.",
+        "Ginger tea or a cold compress on the forehead for 10 minutes.",
+        "Rest in a dark, quiet room and drink 2 to 3 litres of water."
       ]
     },
     "acidity": {
@@ -228,7 +410,9 @@
           "dose": "10 ml liquid or 1 chewable tablet",
           "frequency": "after meals and at bedtime",
           "days": 3,
-          "allergy_keys": ["antacid"],
+          "allergy_keys": [
+            "antacid"
+          ],
           "avoid_pregnant": false
         }
       ],
@@ -241,6 +425,41 @@
         "Severe chest pain radiating to arm, neck, or jaw.",
         "Difficulty swallowing or painful swallowing.",
         "Black tarry stools or vomiting blood."
+      ],
+      "ayurvedic": [
+        {
+          "name": "Avipattikar Churna",
+          "dose": "1 teaspoon with water",
+          "frequency": "twice daily before meals",
+          "days": 5
+        },
+        {
+          "name": "Amla Powder",
+          "dose": "1 teaspoon with water",
+          "frequency": "once daily in the morning",
+          "days": 5
+        }
+      ],
+      "homeopathic": [
+        {
+          "name": "Nux Vomica",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        },
+        {
+          "name": "Robinia",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        }
+      ],
+      "home_remedies": [
+        "A glass of cold milk without sugar when burning starts.",
+        "Chew half a teaspoon of fennel seeds (saunf) after meals.",
+        "Avoid lying down for 2 hours after eating."
       ]
     },
     "mild_diarrhoea": {
@@ -254,7 +473,10 @@
           "dose": "1 sachet in 1 litre clean water",
           "frequency": "sip after each loose stool",
           "days": 2,
-          "allergy_keys": ["ors", "oral rehydration salts"],
+          "allergy_keys": [
+            "ors",
+            "oral rehydration salts"
+          ],
           "avoid_pregnant": false
         }
       ],
@@ -267,6 +489,41 @@
         "Blood or mucus in stools.",
         "Signs of severe dehydration: dark urine, dizziness, extreme thirst.",
         "Diarrhoea lasts more than 2 days or is accompanied by high fever."
+      ],
+      "ayurvedic": [
+        {
+          "name": "Kutajghan Vati",
+          "dose": "1 tablet",
+          "frequency": "twice daily after meals",
+          "days": 3
+        },
+        {
+          "name": "Bilva (Bael) Powder",
+          "dose": "1 teaspoon with water",
+          "frequency": "twice daily",
+          "days": 3
+        }
+      ],
+      "homeopathic": [
+        {
+          "name": "Arsenicum Album",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        },
+        {
+          "name": "Podophyllum",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        }
+      ],
+      "home_remedies": [
+        "Drink homemade ORS (1 litre boiled water, 6 teaspoons sugar, half teaspoon salt) after every loose stool.",
+        "Curd rice, banana and rice water (maand).",
+        "Avoid milk, oily and spicy food until stools are normal."
       ]
     },
     "muscle_pain": {
@@ -280,7 +537,11 @@
           "dose": "1 tablet after food",
           "frequency": "twice daily",
           "days": 3,
-          "allergy_keys": ["ibuprofen", "nsaid", "aspirin"],
+          "allergy_keys": [
+            "ibuprofen",
+            "nsaid",
+            "aspirin"
+          ],
           "avoid_pregnant": true
         },
         {
@@ -289,7 +550,10 @@
           "dose": "1 tablet",
           "frequency": "every 8 hours as needed",
           "days": 3,
-          "allergy_keys": ["paracetamol", "acetaminophen"],
+          "allergy_keys": [
+            "paracetamol",
+            "acetaminophen"
+          ],
           "avoid_pregnant": false
         }
       ],
@@ -302,6 +566,41 @@
         "Inability to bear weight or move the affected limb.",
         "Severe swelling, visible deformity, or numbness.",
         "Pain worsens or does not improve within 3 days."
+      ],
+      "ayurvedic": [
+        {
+          "name": "Mahanarayan Oil",
+          "dose": "gentle massage on the painful area",
+          "frequency": "twice daily",
+          "days": 5
+        },
+        {
+          "name": "Ashwagandha Churna",
+          "dose": "half teaspoon with warm milk",
+          "frequency": "once daily at bedtime",
+          "days": 5
+        }
+      ],
+      "homeopathic": [
+        {
+          "name": "Arnica Montana",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        },
+        {
+          "name": "Rhus Toxicodendron",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        }
+      ],
+      "home_remedies": [
+        "Warm compress or hot water bag for 15 minutes, 2 to 3 times a day.",
+        "Turmeric milk at bedtime.",
+        "Gentle stretching; avoid lifting heavy weights for a few days."
       ]
     },
     "allergic_rhinitis": {
@@ -315,7 +614,9 @@
           "dose": "1 tablet",
           "frequency": "once daily at bedtime",
           "days": 5,
-          "allergy_keys": ["cetirizine"],
+          "allergy_keys": [
+            "cetirizine"
+          ],
           "avoid_pregnant": false
         },
         {
@@ -324,7 +625,9 @@
           "dose": "1 to 2 sprays in each nostril",
           "frequency": "2 to 3 times daily",
           "days": 7,
-          "allergy_keys": ["saline"],
+          "allergy_keys": [
+            "saline"
+          ],
           "avoid_pregnant": false
         }
       ],
@@ -337,6 +640,41 @@
         "Swelling of lips, tongue, face, or throat.",
         "Wheezing, chest tightness, or breathing difficulty.",
         "Symptoms do not improve after 5 days."
+      ],
+      "ayurvedic": [
+        {
+          "name": "Haridrakhand",
+          "dose": "1 teaspoon with warm water",
+          "frequency": "twice daily after meals",
+          "days": 5
+        },
+        {
+          "name": "Sitopaladi Churna",
+          "dose": "half teaspoon with honey",
+          "frequency": "twice daily",
+          "days": 5
+        }
+      ],
+      "homeopathic": [
+        {
+          "name": "Allium Cepa",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        },
+        {
+          "name": "Sabadilla",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        }
+      ],
+      "home_remedies": [
+        "Steam inhalation once or twice daily.",
+        "Rinse the nose with lukewarm salt water (jal neti) once a day.",
+        "Cover the nose outdoors and keep bedding free of dust."
       ]
     },
     "sore_throat": {
@@ -350,7 +688,10 @@
           "dose": "1 lozenge",
           "frequency": "dissolve slowly every 3 to 4 hours",
           "days": 3,
-          "allergy_keys": ["lozenge", "lozenges"],
+          "allergy_keys": [
+            "lozenge",
+            "lozenges"
+          ],
           "avoid_pregnant": false
         },
         {
@@ -359,7 +700,10 @@
           "dose": "1 tablet",
           "frequency": "every 8 hours as needed",
           "days": 3,
-          "allergy_keys": ["paracetamol", "acetaminophen"],
+          "allergy_keys": [
+            "paracetamol",
+            "acetaminophen"
+          ],
           "avoid_pregnant": false
         }
       ],
@@ -372,6 +716,41 @@
         "Severe difficulty swallowing saliva or opening the mouth.",
         "High fever or visible white spots on tonsils.",
         "Symptoms persist beyond 4 days."
+      ],
+      "ayurvedic": [
+        {
+          "name": "Khadiradi Vati",
+          "dose": "suck 1 tablet slowly",
+          "frequency": "3 to 4 times daily",
+          "days": 5
+        },
+        {
+          "name": "Yashtimadhu (Mulethi) Powder",
+          "dose": "half teaspoon with honey",
+          "frequency": "twice daily",
+          "days": 5
+        }
+      ],
+      "homeopathic": [
+        {
+          "name": "Belladonna",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        },
+        {
+          "name": "Phytolacca",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        }
+      ],
+      "home_remedies": [
+        "Gargle with warm salt water 3 to 4 times a day.",
+        "Honey with ginger juice, 1 teaspoon twice daily.",
+        "Sip warm water through the day; avoid cold drinks and ice cream."
       ]
     },
     "dry_cough": {
@@ -385,7 +764,10 @@
           "dose": "1 lozenge",
           "frequency": "dissolve slowly every 4 hours",
           "days": 3,
-          "allergy_keys": ["lozenge", "lozenges"],
+          "allergy_keys": [
+            "lozenge",
+            "lozenges"
+          ],
           "avoid_pregnant": false
         }
       ],
@@ -398,6 +780,41 @@
         "Coughing up blood or thick discolored phlegm.",
         "Shortness of breath, chest pain, or high fever.",
         "Cough persists for longer than 2 weeks."
+      ],
+      "ayurvedic": [
+        {
+          "name": "Sitopaladi Churna",
+          "dose": "half teaspoon with honey",
+          "frequency": "3 times daily",
+          "days": 5
+        },
+        {
+          "name": "Yashtimadhu (Mulethi) Powder",
+          "dose": "half teaspoon with honey",
+          "frequency": "twice daily",
+          "days": 5
+        }
+      ],
+      "homeopathic": [
+        {
+          "name": "Drosera",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        },
+        {
+          "name": "Bryonia Alba",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "3 times daily",
+          "days": 3
+        }
+      ],
+      "home_remedies": [
+        "1 teaspoon honey in warm water at bedtime.",
+        "Tulsi and black pepper tea twice daily.",
+        "Steam inhalation and keep the room air moist."
       ]
     },
     "constipation": {
@@ -411,7 +828,10 @@
           "dose": "1 to 2 teaspoons in a glass of water",
           "frequency": "once daily at bedtime",
           "days": 3,
-          "allergy_keys": ["isabgol", "psyllium"],
+          "allergy_keys": [
+            "isabgol",
+            "psyllium"
+          ],
           "avoid_pregnant": false
         }
       ],
@@ -424,6 +844,41 @@
         "Severe abdominal pain, cramping, or vomiting.",
         "Blood in stools or rectal bleeding.",
         "No bowel movement for more than 5 days."
+      ],
+      "ayurvedic": [
+        {
+          "name": "Triphala Churna",
+          "dose": "1 teaspoon with warm water",
+          "frequency": "once daily at bedtime",
+          "days": 5
+        },
+        {
+          "name": "Isabgol (Psyllium Husk)",
+          "dose": "2 teaspoons in a glass of water",
+          "frequency": "once daily at bedtime",
+          "days": 5
+        }
+      ],
+      "homeopathic": [
+        {
+          "name": "Nux Vomica",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "twice daily",
+          "days": 5
+        },
+        {
+          "name": "Bryonia Alba",
+          "strength": "30C",
+          "dose": "4 pills under the tongue",
+          "frequency": "twice daily",
+          "days": 5
+        }
+      ],
+      "home_remedies": [
+        "2 glasses of warm water first thing in the morning.",
+        "Papaya, guava, soaked raisins and green vegetables daily.",
+        "A 20 minute walk after dinner."
       ]
     }
   }

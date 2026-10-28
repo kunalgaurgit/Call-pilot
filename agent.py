@@ -94,12 +94,27 @@ def build_rx(config: dict, fields: dict) -> dict:
     else:
         spoken_meds = ", ".join(med_phrases[:-1]) + ", and " + med_phrases[-1]
 
+    # Herbal products are skipped in pregnancy; allergies match the remedy's own name.
+    ayurvedic = [] if is_pregnant else [m for m in cond_def.get("ayurvedic", [])
+                                        if allergy_none or m["name"].split()[0].lower() not in allergies_str]
+    homeopathic = list(cond_def.get("homeopathic", []))
+    home_remedies = list(cond_def.get("home_remedies", []))
+
     spoken = f"I recommend {spoken_meds}.".replace("{", "").replace("}", "")
+    alt = [f"{ayurvedic[0]['name']} in Ayurveda"] if ayurvedic else []
+    alt += [f"{homeopathic[0]['name']} 30C in homeopathy"] if homeopathic else []
+    if alt:
+        spoken += f" If you prefer, you can take {' or '.join(alt)} instead."
+    if home_remedies:
+        spoken += f" Home remedy: {home_remedies[0]}"
 
     return {
         "status": "ok",
         "condition": label,
         "medicines": filtered_meds,
+        "ayurvedic": ayurvedic,
+        "homeopathic": homeopathic,
+        "home_remedies": home_remedies,
         "advice": list(cond_def.get("advice", [])),
         "see_doctor_if": list(cond_def.get("see_doctor_if", [])),
         "spoken": spoken,

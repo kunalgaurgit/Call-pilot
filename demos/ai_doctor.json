@@ -11,6 +11,8 @@
               "args": {
                 "symptoms": "headache",
                 "duration_days": 1,
+                "symptom_details": "dull pressing pain on both temples, worse on screens",
+                "associated_symptoms": "none",
                 "severity": "mild"
               }
             }

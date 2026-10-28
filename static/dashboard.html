@@ -3,269 +3,443 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Call Pilot — Supervisor Dashboard</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Call Pilot HMS Console</title>
+  <style>
+    :root {
+      --desk: #d4d0c8; --panel: #ece9d8; --shadow: #808080; --navy: #0a246a; --navy2: #3a6ea5;
+      --ink: #111; --muted: #555; --green: #0b8a2e; --red: #b91c1c; --amber: #b45309; --purple: #7e22ce; --blue: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--desk); color: var(--ink); font: 12px Tahoma, Verdana, "Segoe UI", sans-serif; }
+    .mono { font-family: "Lucida Console", Consolas, monospace; }
+    .bevel { border: 1px solid; border-color: #fff var(--shadow) var(--shadow) #fff; box-shadow: inset -1px -1px #404040, inset 1px 1px #dfdfdf; }
+    .sunken { border: 1px solid; border-color: var(--shadow) #fff #fff var(--shadow); background: #fff; }
+    .titlebar { display: flex; align-items: center; gap: 10px; padding: 4px 8px; color: #fff; font-weight: bold;
+      background: linear-gradient(90deg, var(--navy), var(--navy2)); }
+    .titlebar .grow { flex: 1; }
+    .menubar { display: flex; gap: 2px; padding: 2px 4px; background: var(--desk); border-bottom: 1px solid var(--shadow); flex-wrap: wrap; }
+    .menubar a { padding: 2px 8px; color: var(--ink); text-decoration: none; }
+    .menubar a:hover { background: var(--navy); color: #fff; }
+    .ticker { background: #000; color: #ffeb3b; overflow: hidden; white-space: nowrap; padding: 3px 0; }
+    .ticker span { display: inline-block; padding-left: 100%; animation: scroll 40s linear infinite; }
+    @keyframes scroll { to { transform: translateX(-100%); } }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 4px; background: var(--desk); border-bottom: 1px solid var(--shadow); }
+    button, .btn, select, input { font: inherit; }
+    button, .btn { background: var(--desk); color: var(--ink); padding: 3px 10px; cursor: pointer; text-decoration: none; display: inline-block; }
+    button:active, .btn:active { border-color: var(--shadow) #fff #fff var(--shadow); }
+    button:disabled { color: var(--shadow); }
+    select, input { padding: 2px 4px; }
+    .sep { width: 1px; height: 20px; background: var(--shadow); border-right: 1px solid #fff; margin: 0 4px; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 4px; padding: 4px; }
+    .kpi { background: var(--panel); padding: 4px 6px; }
+    .kpi b { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .kpi span { font: bold 20px "Lucida Console", Consolas, monospace; }
+    .grid { display: grid; grid-template-columns: 290px minmax(0, 1fr) 380px; gap: 4px; padding: 0 4px 4px; }
+    @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+    .panel { background: var(--panel); margin-bottom: 4px; min-width: 0; }
+    .panel > h3 { margin: 0; padding: 2px 6px; font-size: 11px; color: #fff; background: var(--navy); text-transform: uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; }
+    .panel > h3.green { background: var(--green); } .panel > h3.grey { background: #374151; } .panel > h3.red { background: var(--red); } .panel > h3.amber { background: var(--amber); }
+    .panel .body { padding: 6px; }
+    .kv { display: grid; grid-template-columns: 110px 1fr; gap: 1px 6px; }
+    .kv dt { font-weight: bold; color: var(--muted); }
+    .kv dd { margin: 0; font-family: "Lucida Console", Consolas, monospace; word-break: break-word; }
+    .bar { display: grid; grid-template-columns: 110px 1fr 28px; gap: 4px; align-items: center; margin: 2px 0; font-size: 11px; }
+    .bar i { display: block; height: 10px; background: repeating-linear-gradient(90deg, var(--navy) 0 6px, var(--navy2) 6px 8px); border: 1px solid var(--ink); }
+    .led { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #3f3f3f; border: 1px solid #000; vertical-align: middle; }
+    .led.on { background: #22c55e; box-shadow: 0 0 4px #22c55e; } .led.err { background: #ef4444; } .led.warn { background: #f59e0b; }
+    .live-feed { max-height: 330px; overflow-y: auto; padding: 4px; }
+    .live-call { margin-bottom: 4px; background: #fff; }
+    .live-call-head { display: flex; justify-content: space-between; background: var(--desk); padding: 2px 6px; font-weight: bold; }
+    .live-call.is-live .live-call-head { background: #c8f7c5; }
+    .live-call-body { max-height: 180px; overflow-y: auto; padding: 2px 6px; font-family: "Lucida Console", Consolas, monospace; font-size: 11px; }
+    .live-msg { display: grid; grid-template-columns: 62px 52px 1fr; gap: 4px; padding: 1px 0; border-bottom: 1px dotted #ccc; }
+    .live-caller .live-who { color: var(--blue); } .live-agent .live-who { color: var(--green); }
+    .live-tool .live-who, .live-tool .live-text { color: var(--purple); } .live-error .live-who, .live-error .live-text { color: var(--red); }
+    .live-system .live-text { color: var(--muted); font-style: italic; }
+    .eventlog { height: 220px; overflow-y: auto; background: #000; color: #4ade80; font: 11px "Lucida Console", Consolas, monospace; padding: 4px; }
+    .eventlog .caller { color: #fde047; } .eventlog .error { color: #f87171; } .eventlog .tool { color: #c4b5fd; } .eventlog .system { color: #9ca3af; }
+    table { width: 100%; border-collapse: collapse; background: #fff; }
+    th { background: var(--desk); text-align: left; padding: 3px 4px; border: 1px solid var(--shadow); font-size: 11px; position: sticky; top: 0; }
+    td { padding: 2px 4px; border: 1px solid #c0c0c0; font-size: 11px; vertical-align: top; }
+    tbody tr:nth-child(even) { background: #f4f4f0; }
+    tbody tr:hover { background: #ffffcc; cursor: pointer; }
+    tbody tr.selected { background: var(--navy); color: #fff; }
+    tbody tr.selected a { color: #fff; }
+    .table-wrap { max-height: 360px; overflow: auto; }
+    .badge { padding: 0 4px; border: 1px solid; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+    .badge-completed { color: var(--green); } .badge-referred, .badge-escalated { color: var(--amber); } .badge-abandoned { color: var(--muted); } .badge-emergency { color: var(--red); }
+    .med { width: 100%; margin: 2px 0 6px; }
+    .med td, .med th { font-size: 10px; }
+    .sec { font-weight: bold; margin-top: 6px; padding: 1px 4px; color: #fff; }
+    pre { margin: 0; max-height: 220px; overflow: auto; font-size: 10px; background: #fff; padding: 4px; }
+    .statusbar { display: flex; gap: 4px; padding: 2px 4px; background: var(--desk); border-top: 1px solid #fff; position: sticky; bottom: 0; }
+    .statusbar > div { padding: 1px 6px; font-size: 11px; white-space: nowrap; overflow: hidden; }
+    .statusbar .grow { flex: 1; }
+    .ai-error { color: var(--red); font-weight: bold; padding: 2px 6px; }
+    .empty { color: var(--muted); font-style: italic; padding: 6px; }
+  </style>
 </head>
 <body>
-  <div class="container wide">
-    <header>
-      <div class="brand">
-        <h1>Call Pilot Dashboard</h1>
-        <span class="poll-tag">Live (3s poll)</span>
-      </div>
-      <a href="/index.html" class="nav-link">&larr; Call Assistant</a>
-    </header>
+  <div class="titlebar"><span>&#9764;</span><span class="grow">CALL PILOT HMS :: AI DOCTOR SUPERVISOR CONSOLE</span><span id="clock" class="mono"></span></div>
+  <nav class="menubar">
+    <a href="#live">Live&nbsp;Calls</a><a href="#records">Records</a><a href="#details">Case&nbsp;Sheet</a><a href="#events">Event&nbsp;Log</a>
+    <a href="#stats">Statistics</a><a href="/api/records" target="_blank">REST&nbsp;API</a><a href="/index.html">Browser&nbsp;Phone</a>
+  </nav>
+  <div class="ticker mono"><span id="ticker">*** CALL PILOT AI DOCTOR CONSOLE ONLINE *** EMERGENCY CASES ARE REDIRECTED TO 108 *** PRESCRIPTIONS INCLUDE ALLOPATHIC, AYURVEDIC, HOMEOPATHIC AND HOME REMEDIES *** COLLEGE DEMO - NOT A REAL MEDICAL SERVICE ***</span></div>
+  <div class="toolbar">
+    <button class="bevel" id="refresh" type="button">&#8635; Refresh</button>
+    <button class="bevel" id="ai-recheck" type="button">&#9881; Re-check AI</button>
+    <div class="sep"></div>
+    <label for="business-filter">Business:</label>
+    <select id="business-filter" class="sunken"><option value="">All Businesses</option></select>
+    <label for="status-filter">Status:</label>
+    <select id="status-filter" class="sunken">
+      <option value="">All</option><option>completed</option><option>referred</option><option>escalated</option><option>abandoned</option>
+    </select>
+    <label for="search">Find:</label>
+    <input id="search" class="sunken" placeholder="patient / complaint / Rx" size="22">
+    <div class="sep"></div>
+    <button class="bevel" id="export" type="button">&#128190; Export CSV</button>
+    <a class="btn bevel" href="/index.html">&#9742; Browser phone</a>
+  </div>
 
-    <div class="card live-card">
-      <div class="controls-bar">
-        <div class="ai-status">
-          <span id="ai-pill" class="ai-pill ai-unknown">AI: checking…</span>
-          <span id="ai-detail" class="ai-detail"></span>
-          <button id="ai-recheck" class="btn-recheck" type="button">Re-check</button>
+  <div class="kpis" id="stats">
+    <div class="kpi bevel"><b>Total records</b><span id="k-total">0</span></div>
+    <div class="kpi bevel"><b>Completed</b><span id="k-completed" style="color:var(--green)">0</span></div>
+    <div class="kpi bevel"><b>Prescriptions</b><span id="k-rx" style="color:var(--blue)">0</span></div>
+    <div class="kpi bevel"><b>Referred</b><span id="k-referred" style="color:var(--amber)">0</span></div>
+    <div class="kpi bevel"><b>Escalated</b><span id="k-escalated" style="color:var(--red)">0</span></div>
+    <div class="kpi bevel"><b>Abandoned</b><span id="k-abandoned" style="color:var(--muted)">0</span></div>
+    <div class="kpi bevel"><b>Active calls</b><span id="k-active">0</span></div>
+    <div class="kpi bevel"><b>Avg AI reply</b><span id="k-latency">--</span></div>
+    <div class="kpi bevel"><b>Events today</b><span id="k-events">0</span></div>
+    <div class="kpi bevel"><b>Errors</b><span id="k-errors" style="color:var(--red)">0</span></div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="panel bevel">
+        <h3>System monitor <span id="ai-led" class="led"></span></h3>
+        <div class="body">
+          <dl class="kv">
+            <dt>AI status</dt><dd id="ai-pill">checking...</dd>
+            <dt>Mode</dt><dd id="s-mode">--</dd>
+            <dt>Models</dt><dd id="s-model">--</dd>
+            <dt>Paused</dt><dd id="s-paused">none</dd>
+            <dt>Last check</dt><dd id="s-checked">--</dd>
+            <dt>Poll rate</dt><dd>1 s live / 3 s records</dd>
+            <dt>Call log</dt><dd>logs/calls-YYYY-MM-DD.jsonl</dd>
+            <dt>Screen</dt><dd id="s-browser"></dd>
+          </dl>
+          <div id="ai-error" class="ai-error" hidden></div>
         </div>
-        <div id="live-count" class="record-count">0 active calls</div>
       </div>
-      <div id="ai-error" class="ai-error" hidden></div>
-      <div id="live-feed" class="live-feed">
-        <div class="live-empty">No calls yet. Conversations appear here live, with timestamps.</div>
+      <div class="panel bevel">
+        <h3 class="grey">Condition frequency</h3>
+        <div class="body" id="cond-bars"><div class="empty">No data</div></div>
       </div>
-      <div class="live-foot">Full logs with millisecond timestamps: <code>logs/calls-YYYY-MM-DD.jsonl</code></div>
+      <div class="panel bevel">
+        <h3 class="grey">Status breakdown</h3>
+        <div class="body" id="status-bars"><div class="empty">No data</div></div>
+      </div>
+      <div class="panel bevel">
+        <h3 class="grey">Severity (AI assessed)</h3>
+        <div class="body" id="sev-bars"><div class="empty">No data</div></div>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="controls-bar">
-        <div class="filter-group">
-          <label for="business-filter">Business:</label>
-          <select id="business-filter">
-            <option value="">All Businesses</option>
-          </select>
+    <div>
+      <div class="panel bevel" id="live">
+        <h3 class="green">Live calls <span id="live-count">0 active calls</span></h3>
+        <div id="live-feed" class="live-feed"><div class="empty live-empty">No calls yet. Conversations appear here live, with timestamps.</div></div>
+      </div>
+      <div class="panel bevel" id="records">
+        <h3>Patient records <span id="record-count">Loading...</span></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Time</th><th>Patient</th><th>Age/Sex</th><th>Complaint</th><th>Dx</th><th>Sev.</th><th>Status</th><th>Rx / ID</th><th>PDF</th></tr></thead>
+            <tbody id="records-table-body"><tr><td colspan="10" class="empty">Loading records...</td></tr></tbody>
+          </table>
         </div>
-        <div id="record-count" class="record-count">Loading...</div>
       </div>
-
-      <div class="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Business</th>
-              <th>Status</th>
-              <th>Summary</th>
-              <th>PDF</th>
-            </tr>
-          </thead>
-          <tbody id="records-table-body">
-            <tr class="empty-row">
-              <td colspan="5">Loading records...</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="panel bevel" id="events">
+        <h3 class="grey">Raw event log <span id="event-count">0</span></h3>
+        <div id="eventlog" class="eventlog"></div>
       </div>
     </div>
 
-    <!-- Details View -->
-    <div id="details-section" class="card details-card" style="display: none;">
-      <div class="details-header">
-        <h2 class="details-title">Record Details</h2>
+    <div>
+      <div class="panel bevel" id="details">
+        <h3 class="amber">Case sheet <span id="details-id"></span></h3>
+        <div class="body" id="details-body"><div class="empty">Click a record to open its case sheet.</div></div>
       </div>
-      <pre id="record-details-pre"></pre>
     </div>
+  </div>
+
+  <div class="statusbar">
+    <div class="sunken grow" id="sb-msg">Ready</div>
+    <div class="sunken" id="sb-records">0 records</div>
+    <div class="sunken" id="sb-ai">AI: --</div>
+    <div class="sunken mono" id="sb-time"></div>
   </div>
 
   <script>
     let selectedRecordKey = null;
     let recordsData = [];
+    const $ = id => document.getElementById(id);
+    const businessFilter = $("business-filter");
+    const statusFilter = $("status-filter");
+    const searchBox = $("search");
+    const recordsTableBody = $("records-table-body");
+    $("s-browser").textContent = screen.width + " x " + screen.height;
 
-    const businessFilter = document.getElementById("business-filter");
-    const recordsTableBody = document.getElementById("records-table-body");
-    const recordCountEl = document.getElementById("record-count");
-    const detailsSection = document.getElementById("details-section");
-    const recordDetailsPre = document.getElementById("record-details-pre");
+    function el(tag, text, cls) {
+      const e = document.createElement(tag);
+      if (text != null) e.textContent = text;
+      if (cls) e.className = cls;
+      return e;
+    }
 
-    // Populate business filter dropdown
+    function tick() {
+      const now = new Date();
+      $("clock").textContent = now.toLocaleString();
+      $("sb-time").textContent = now.toLocaleTimeString();
+    }
+    tick();
+    setInterval(tick, 1000);
+
     async function loadConfigs() {
       try {
         const res = await fetch("/api/configs");
-        if (res.ok) {
-          const configs = await res.json();
-          configs.forEach(cfg => {
-            const opt = document.createElement("option");
-            opt.value = cfg.id;
-            opt.textContent = cfg.business;
-            businessFilter.appendChild(opt);
-          });
-        }
+        if (res.ok) (await res.json()).forEach(cfg => {
+          const opt = el("option", cfg.business);
+          opt.value = cfg.id;
+          businessFilter.appendChild(opt);
+        });
       } catch (err) {
         console.error("Failed to load configs:", err);
       }
     }
 
-    // Format ISO string to readable localized date-time
     function formatTime(isoStr) {
-      if (!isoStr) return "—";
-      try {
-        const d = new Date(isoStr);
-        if (isNaN(d.getTime())) return isoStr;
-        return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      } catch {
-        return isoStr;
-      }
+      if (!isoStr) return "--";
+      const d = new Date(isoStr);
+      return isNaN(d) ? isoStr : d.toLocaleDateString([], { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     }
 
-    // Render table rows strictly using textContent
-    function renderTable(records) {
-      recordsTableBody.innerHTML = "";
+    function pdfUrl(rec) {
+      return rec.session_id && rec.booking_id ? "/api/bookings/" + encodeURIComponent(rec.session_id) + "/pdf" : null;
+    }
 
-      if (!records || records.length === 0) {
-        const row = document.createElement("tr");
-        row.className = "empty-row";
-        const td = document.createElement("td");
-        td.colSpan = 5;
-        td.textContent = "No records found.";
-        row.appendChild(td);
-        recordsTableBody.appendChild(row);
-        recordCountEl.textContent = "0 records";
+    function visibleRecords() {
+      const st = statusFilter.value;
+      const q = searchBox.value.trim().toLowerCase();
+      return recordsData.filter(r => (!st || r.status === st) &&
+        (!q || JSON.stringify([r.fields, r.booking_id, r.summary]).toLowerCase().includes(q)));
+    }
+
+    function bars(target, counts, color) {
+      const box = $(target);
+      box.innerHTML = "";
+      const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      if (!entries.length) { box.appendChild(el("div", "No data", "empty")); return; }
+      const max = Math.max(...entries.map(e => e[1]));
+      entries.forEach(([k, n]) => {
+        const row = el("div", null, "bar");
+        const fill = el("i");
+        fill.style.width = (n / max * 100) + "%";
+        if (color) fill.style.background = color;
+        const track = el("div");
+        track.appendChild(fill);
+        row.append(el("span", k), track, el("b", String(n), "mono"));
+        box.appendChild(row);
+      });
+    }
+
+    function countBy(list, fn) {
+      return list.reduce((acc, r) => { const k = fn(r); if (k) acc[k] = (acc[k] || 0) + 1; return acc; }, {});
+    }
+
+    function renderStats() {
+      const recs = recordsData;
+      const by = countBy(recs, r => r.status);
+      $("k-total").textContent = recs.length;
+      $("k-completed").textContent = by.completed || 0;
+      $("k-referred").textContent = by.referred || 0;
+      $("k-escalated").textContent = (by.escalated || 0) + (by.emergency || 0);
+      $("k-abandoned").textContent = by.abandoned || 0;
+      $("k-rx").textContent = recs.filter(r => (r.booking_id || "").startsWith("RX-")).length;
+      bars("cond-bars", countBy(recs, r => r.rx?.condition || r.fields?.condition));
+      bars("status-bars", by, "#374151");
+      bars("sev-bars", countBy(recs, r => r.fields?.severity), "#b45309");
+    }
+
+    function renderTable() {
+      const records = visibleRecords();
+      recordsTableBody.innerHTML = "";
+      $("record-count").textContent = records.length + " / " + recordsData.length + " records";
+      $("sb-records").textContent = recordsData.length + " records";
+      if (!records.length) {
+        const tr = el("tr");
+        const td = el("td", "No records found.", "empty");
+        td.colSpan = 10;
+        tr.appendChild(td);
+        recordsTableBody.appendChild(tr);
         return;
       }
-
-      recordCountEl.textContent = records.length + (records.length === 1 ? " record" : " records");
-
-      records.forEach(rec => {
-        const tr = document.createElement("tr");
+      records.forEach((rec, i) => {
+        const f = rec.fields || {};
         const key = rec.id || rec.session_id;
-
-        if (key && key === selectedRecordKey) {
-          tr.classList.add("selected");
-        }
-
-        // Time
-        const tdTime = document.createElement("td");
-        tdTime.className = "time-cell";
-        tdTime.textContent = formatTime(rec.ended_at || rec.started_at || rec.created_at);
-        tr.appendChild(tdTime);
-
-        // Business
-        const tdBiz = document.createElement("td");
-        tdBiz.className = "biz-cell";
-        tdBiz.textContent = rec.business || rec.business_id || "—";
-        tr.appendChild(tdBiz);
-
-        // Status badge
-        const tdStatus = document.createElement("td");
-        const badge = document.createElement("span");
-        const statusVal = (rec.status || "unknown").toLowerCase();
-        badge.className = "badge badge-" + statusVal;
-        badge.textContent = statusVal;
-        tdStatus.appendChild(badge);
-        tr.appendChild(tdStatus);
-
-        // Summary
-        const tdSummary = document.createElement("td");
-        tdSummary.className = "summary-cell";
-        tdSummary.textContent = rec.summary || "—";
-        tr.appendChild(tdSummary);
-
-        // PDF column
-        const tdPdf = document.createElement("td");
-        tdPdf.className = "pdf-cell";
-        const bookingId = rec.booking_id || (rec.fields && rec.fields.booking_id);
-        if (rec.session_id && bookingId) {
-          const pdfLink = document.createElement("a");
-          pdfLink.href = "/api/bookings/" + encodeURIComponent(rec.session_id) + "/pdf";
-          pdfLink.className = "btn-pdf-small";
-          pdfLink.textContent = "PDF";
-          pdfLink.target = "_blank";
-          pdfLink.setAttribute("download", bookingId + ".pdf");
-          pdfLink.addEventListener("click", (e) => e.stopPropagation());
-          tdPdf.appendChild(pdfLink);
-        } else {
-          tdPdf.textContent = "—";
-        }
+        const tr = el("tr");
+        if (key === selectedRecordKey) tr.classList.add("selected");
+        const status = el("span", rec.status || "unknown", "badge badge-" + (rec.status || "unknown"));
+        const cells = [
+          String(rec.id || i + 1), formatTime(rec.ended_at || rec.started_at || rec.created_at), f.patient_name || "--",
+          (f.age ?? "-") + "/" + (f.gender ? f.gender[0].toUpperCase() : "-"), f.symptoms || "--",
+          rec.rx?.condition || f.condition || "--", (f.severity || "--").slice(0, 3).toUpperCase(), status, rec.booking_id || "--"
+        ];
+        cells.forEach(c => { const td = el("td", typeof c === "string" ? c : null); if (typeof c !== "string") td.appendChild(c); tr.appendChild(td); });
+        const tdPdf = el("td");
+        const url = pdfUrl(rec);
+        if (url) {
+          const a = el("a", "PDF");
+          a.href = url;
+          a.target = "_blank";
+          a.addEventListener("click", e => e.stopPropagation());
+          tdPdf.appendChild(a);
+        } else tdPdf.textContent = "--";
         tr.appendChild(tdPdf);
-
-        // Click row -> show record details
         tr.addEventListener("click", () => {
           selectedRecordKey = key;
-          document.querySelectorAll("#records-table-body tr").forEach(r => r.classList.remove("selected"));
-          tr.classList.add("selected");
+          renderTable();
           showDetails(rec);
         });
-
         recordsTableBody.appendChild(tr);
       });
-
-      // Maintain selection if already chosen
-      if (selectedRecordKey) {
-        const found = records.find(r => (r.id || r.session_id) === selectedRecordKey);
-        if (found) {
-          showDetails(found);
-        }
-      }
     }
 
-    function showDetails(record) {
-      detailsSection.style.display = "flex";
-      recordDetailsPre.textContent = JSON.stringify(record, null, 2);
-
-      const bookingId = record.booking_id || (record.fields && record.fields.booking_id);
-      let pdfBtn = document.getElementById("details-pdf-btn");
-      if (record.session_id && bookingId) {
-        if (!pdfBtn) {
-          pdfBtn = document.createElement("a");
-          pdfBtn.id = "details-pdf-btn";
-          pdfBtn.className = "btn-pdf-small";
-          pdfBtn.target = "_blank";
-          pdfBtn.textContent = "Download PDF Slip";
-          detailsSection.querySelector(".details-header").appendChild(pdfBtn);
-        }
-        pdfBtn.href = "/api/bookings/" + encodeURIComponent(record.session_id) + "/pdf";
-        pdfBtn.style.display = "inline-flex";
-      } else if (pdfBtn) {
-        pdfBtn.style.display = "none";
-      }
+    function medTable(title, color, meds) {
+      const frag = document.createDocumentFragment();
+      if (!meds || !meds.length) return frag;
+      const h = el("div", title, "sec");
+      h.style.background = color;
+      const t = el("table", null, "med");
+      const head = el("tr");
+      ["Medicine", "Dose", "Frequency", "Days"].forEach(x => head.appendChild(el("th", x)));
+      t.appendChild(head);
+      meds.forEach(m => {
+        const tr = el("tr");
+        [((m.name || "") + " " + (m.strength || "")).trim(), m.dose || "", m.frequency || "", m.days ? String(m.days) : ""].forEach(x => tr.appendChild(el("td", x)));
+        t.appendChild(tr);
+      });
+      frag.append(h, t);
+      return frag;
     }
 
-    // Fetch records from /api/records
+    function list(title, color, items) {
+      const frag = document.createDocumentFragment();
+      if (!items || !items.length) return frag;
+      const h = el("div", title, "sec");
+      h.style.background = color;
+      const ul = el("ul");
+      ul.style.margin = "2px 0 6px";
+      ul.style.paddingLeft = "18px";
+      items.forEach(x => ul.appendChild(el("li", x)));
+      frag.append(h, ul);
+      return frag;
+    }
+
+    function showDetails(rec) {
+      const body = $("details-body");
+      body.innerHTML = "";
+      $("details-id").textContent = rec.booking_id || ("#" + (rec.id || ""));
+      const f = rec.fields || {};
+      const dl = el("dl", null, "kv");
+      [["Status", rec.status], ["Business", rec.business], ["Started", formatTime(rec.started_at)], ["Ended", formatTime(rec.ended_at)],
+       ["Patient", f.patient_name], ["Age / Sex", (f.age ?? "") + " / " + (f.gender || "")], ["Pregnant", f.pregnant],
+       ["Complaint", f.symptoms], ["Duration", f.duration_days != null ? f.duration_days + " day(s)" : ""], ["History", f.symptom_details],
+       ["Other symptoms", f.associated_symptoms], ["Tried so far", f.tried_so_far], ["Severity", f.severity], ["Allergies", f.allergies],
+       ["Current meds", f.current_medicines], ["Assessment", rec.rx?.condition || f.condition], ["Escalation", rec.escalation_reason],
+       ["Summary", rec.summary]].forEach(([k, v]) => {
+        if (v == null || v === "" || v === " / ") return;
+        dl.append(el("dt", k), el("dd", String(v)));
+      });
+      body.appendChild(dl);
+      const rx = rec.rx;
+      if (rx && rx.status === "ok") {
+        body.append(
+          medTable("1. ALLOPATHIC (OTC)", "var(--blue)", rx.medicines),
+          medTable("2. AYURVEDIC", "var(--green)", rx.ayurvedic),
+          medTable("3. HOMEOPATHIC", "var(--purple)", rx.homeopathic),
+          list("4. HOME REMEDIES", "var(--amber)", rx.home_remedies),
+          list("ADVICE", "#374151", rx.advice),
+          list("SEE A DOCTOR IF", "var(--red)", rx.see_doctor_if)
+        );
+      }
+      const url = pdfUrl(rec);
+      if (url) {
+        const a = el("a", "\u{1F4C4} Download PDF", "btn bevel");
+        a.href = url;
+        a.target = "_blank";
+        body.appendChild(a);
+      }
+      if (rec.transcript?.length) {
+        body.appendChild(el("div", "TRANSCRIPT (" + rec.transcript.length + ")", "sec")).style.background = "#374151";
+        const box = el("div", null, "eventlog");
+        box.style.height = "160px";
+        rec.transcript.forEach(t => box.appendChild(el("div", "[" + t.role.toUpperCase() + "] " + t.text, t.role === "customer" ? "caller" : "")));
+        body.appendChild(box);
+      }
+      const det = el("details");
+      det.appendChild(el("summary", "Raw JSON"));
+      det.appendChild(el("pre", JSON.stringify(rec, null, 2), "sunken"));
+      body.appendChild(det);
+    }
+
     async function fetchRecords() {
-      const selectedBiz = businessFilter.value;
-      const url = selectedBiz ? "/api/records?business_id=" + encodeURIComponent(selectedBiz) : "/api/records";
-
+      const biz = businessFilter.value;
       try {
-        const res = await fetch(url);
+        const res = await fetch(biz ? "/api/records?business_id=" + encodeURIComponent(biz) : "/api/records");
         if (!res.ok) return;
         recordsData = await res.json();
-        renderTable(recordsData);
+        renderStats();
+        renderTable();
+        const sel = recordsData.find(r => (r.id || r.session_id) === selectedRecordKey);
+        if (sel && !$("details-body").matches(":hover")) showDetails(sel);
+        $("sb-msg").textContent = "Records refreshed " + new Date().toLocaleTimeString();
       } catch (err) {
-        console.error("Failed to load records:", err);
+        $("sb-msg").textContent = "Server unreachable";
       }
     }
 
-    businessFilter.addEventListener("change", () => {
-      selectedRecordKey = null;
-      detailsSection.style.display = "none";
-      fetchRecords();
-    });
+    function exportCsv() {
+      const rows = [["id", "time", "patient", "age", "gender", "complaint", "condition", "severity", "status", "rx_id", "summary"]];
+      visibleRecords().forEach(r => {
+        const f = r.fields || {};
+        rows.push([r.id, r.ended_at || r.started_at, f.patient_name, f.age, f.gender, f.symptoms, r.rx?.condition || f.condition, f.severity, r.status, r.booking_id, r.summary]);
+      });
+      const csv = rows.map(r => r.map(v => '"' + String(v ?? "").replace(/"/g, '""') + '"').join(",")).join("\n");
+      const a = el("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      a.download = "callpilot-records.csv";
+      a.click();
+    }
 
-    // Initial load
+    businessFilter.addEventListener("change", () => { selectedRecordKey = null; fetchRecords(); });
+    statusFilter.addEventListener("change", renderTable);
+    searchBox.addEventListener("input", renderTable);
+    $("export").addEventListener("click", exportCsv);
+    $("refresh").addEventListener("click", () => { fetchRecords(); fetchStatus(); });
+
     loadConfigs().then(fetchRecords);
-
-    // Polling every 3s, skipping while document is hidden
-    setInterval(() => {
-      if (!document.hidden) {
-        fetchRecords();
-      }
-    }, 3000);
+    setInterval(() => { if (!document.hidden) fetchRecords(); }, 3000);
 
     // ---- AI status + live conversations ----
-    const aiPill = document.getElementById("ai-pill");
-    const aiDetail = document.getElementById("ai-detail");
-    const aiError = document.getElementById("ai-error");
-    const liveFeed = document.getElementById("live-feed");
-    const liveCount = document.getElementById("live-count");
+    const liveFeed = $("live-feed");
+    const eventLog = $("eventlog");
     const ROLE_LABEL = { caller: "Caller", agent: "Agent", tool: "Tool", error: "Error", system: "System" };
-    const calls = new Map(); // sid -> {events: [], el}
-    let lastSeq = 0;
-    let activeSids = new Set();
+    const calls = new Map();
+    let lastSeq = 0, eventCount = 0, errorCount = 0, latencySum = 0, latencyN = 0;
 
     function clock(iso) {
       const d = new Date(iso);
@@ -274,18 +448,21 @@
 
     function renderAi(status) {
       const ai = status.ai || {};
-      const labels = { ok: "AI connected", error: "AI error", demo: "Demo mode (no AI)", unknown: "AI: checking…" };
-      aiPill.className = "ai-pill ai-" + (ai.state || "unknown");
-      aiPill.textContent = labels[ai.state] || labels.unknown;
-      const paused = Object.entries(status.paused_models || {})
-        .map(([m, s]) => m + " paused (busy or out of quota, back in " + (s >= 3600 ? Math.round(s / 3600) + "h" : Math.ceil(s / 60) + "m") + ")");
-      aiDetail.textContent = (status.mode === "gemini" ? status.model : "") +
-        (ai.checked_at ? " · last checked " + clock(ai.checked_at) : "") +
-        (paused.length ? " · " + paused.join(", ") : "");
-      aiError.hidden = ai.state !== "error";
-      aiError.textContent = ai.error || "";
+      const labels = { ok: "CONNECTED", error: "ERROR", demo: "DEMO MODE (no AI)", unknown: "CHECKING..." };
+      $("ai-pill").textContent = labels[ai.state] || labels.unknown;
+      $("ai-pill").style.color = ai.state === "ok" ? "var(--green)" : ai.state === "error" ? "var(--red)" : "var(--amber)";
+      $("ai-led").className = "led " + (ai.state === "ok" ? "on" : ai.state === "error" ? "err" : "warn");
+      $("s-mode").textContent = (status.mode || "--").toUpperCase();
+      $("s-model").textContent = status.model || "--";
+      const paused = Object.entries(status.paused_models || {}).map(([m, s]) => m + " (" + Math.ceil(s / 60) + "m)");
+      $("s-paused").textContent = paused.join(", ") || "none";
+      $("s-checked").textContent = ai.checked_at ? clock(ai.checked_at) : "--";
+      $("ai-error").hidden = ai.state !== "error";
+      $("ai-error").textContent = (ai.error || "").includes("429") ? "Gemini quota used up (429). Wait for it to reset or use another API key." : (ai.error || "").slice(0, 160);
       const n = status.active_calls || 0;
-      liveCount.textContent = n + (n === 1 ? " active call" : " active calls");
+      $("live-count").textContent = n + (n === 1 ? " active call" : " active calls");
+      $("k-active").textContent = n;
+      $("sb-ai").textContent = "AI: " + (labels[ai.state] || "--");
     }
 
     async function fetchStatus() {
@@ -293,12 +470,12 @@
         const res = await fetch("/api/status");
         if (res.ok) renderAi(await res.json());
       } catch (err) {
-        aiPill.className = "ai-pill ai-error";
-        aiPill.textContent = "Server unreachable";
+        $("ai-pill").textContent = "SERVER UNREACHABLE";
+        $("ai-led").className = "led err";
       }
     }
 
-    document.getElementById("ai-recheck").addEventListener("click", async (e) => {
+    $("ai-recheck").addEventListener("click", async e => {
       e.target.disabled = true;
       try { await fetch("/api/ai/check", { method: "POST" }); } catch {}
       await fetchStatus();
@@ -308,19 +485,14 @@
     function callCard(sid) {
       let call = calls.get(sid);
       if (call) return call;
-      const el = document.createElement("div");
-      el.className = "live-call";
-      const head = document.createElement("div");
-      head.className = "live-call-head";
-      const title = document.createElement("span");
-      title.className = "live-call-title";
-      const state = document.createElement("span");
-      state.className = "live-call-state";
+      const wrap = el("div", null, "live-call bevel");
+      const head = el("div", null, "live-call-head");
+      const title = el("span");
+      const state = el("span", null, "mono");
       head.append(title, state);
-      const body = document.createElement("div");
-      body.className = "live-call-body";
-      el.append(head, body);
-      call = { el, title, state, body, started: null };
+      const body = el("div", null, "live-call-body");
+      wrap.append(head, body);
+      call = { el: wrap, title, state, body, started: null };
       calls.set(sid, call);
       return call;
     }
@@ -330,23 +502,21 @@
       const call = callCard(sid);
       if (!call.started) {
         call.started = ev.ts;
-        call.title.textContent = "Call " + sid.slice(0, 6) + " · " + clock(ev.ts) + (ev.client ? " · " + ev.client : "");
+        call.title.textContent = "CALL " + sid.slice(0, 6).toUpperCase() + " | " + clock(ev.ts) + (ev.client ? " | " + ev.client : "");
       }
-      const row = document.createElement("div");
-      row.className = "live-msg live-" + ev.role;
-      const time = document.createElement("span");
-      time.className = "live-time";
-      time.textContent = clock(ev.ts);
-      const who = document.createElement("span");
-      who.className = "live-who";
-      who.textContent = ROLE_LABEL[ev.role] || ev.role;
-      const text = document.createElement("span");
-      text.className = "live-text";
-      text.textContent = ev.text + (ev.ms != null && ev.role === "agent" ? "  (" + (ev.ms / 1000).toFixed(1) + "s)" : "");
-      row.append(time, who, text);
+      const row = el("div", null, "live-msg live-" + ev.role);
+      row.append(el("span", clock(ev.ts)), el("span", ROLE_LABEL[ev.role] || ev.role, "live-who"),
+        el("span", ev.text + (ev.ms != null && ev.role === "agent" ? "  (" + (ev.ms / 1000).toFixed(1) + "s)" : ""), "live-text"));
       call.body.appendChild(row);
       call.body.scrollTop = call.body.scrollHeight;
-      liveFeed.prepend(call.el); // most recently active call on top
+      liveFeed.prepend(call.el);
+
+      eventLog.appendChild(el("div", clock(ev.ts) + " " + sid.slice(0, 6) + " " + ev.role.toUpperCase().padEnd(6) + " " + ev.text, ev.role));
+      eventLog.scrollTop = eventLog.scrollHeight;
+      eventCount++;
+      if (ev.role === "error") errorCount++;
+      if (ev.role === "agent" && ev.ms != null) { latencySum += ev.ms; latencyN++; }
+      if (ev.role === "system") $("ticker").textContent = "*** " + clock(ev.ts) + " CALL " + sid.slice(0, 6).toUpperCase() + ": " + ev.text.toUpperCase() + " ***   " + $("ticker").textContent.slice(0, 400);
     }
 
     async function fetchLive() {
@@ -355,21 +525,26 @@
         if (!res.ok) return;
         const data = await res.json();
         const events = data.events || [];
-        if (events.length && events[0].seq <= lastSeq) { // server restarted: start over
+        if (events.length && events[0].seq <= lastSeq) {
           calls.clear();
           liveFeed.innerHTML = "";
+          eventLog.innerHTML = "";
         }
         if (events.length) {
           liveFeed.querySelector(".live-empty")?.remove();
           events.forEach(addEvent);
           lastSeq = events[events.length - 1].seq;
         }
-        activeSids = new Set(data.active || []);
+        const active = new Set(data.active || []);
         calls.forEach((call, sid) => {
-          const live = activeSids.has(sid);
-          call.state.textContent = live ? "live" : "ended";
+          const live = active.has(sid);
+          call.state.textContent = live ? "● LIVE" : "ENDED";
           call.el.classList.toggle("is-live", live);
         });
+        $("k-events").textContent = eventCount;
+        $("event-count").textContent = eventCount + " events";
+        $("k-errors").textContent = errorCount;
+        $("k-latency").textContent = latencyN ? (latencySum / latencyN / 1000).toFixed(1) + "s" : "--";
       } catch (err) {
         console.error("Failed to load live feed:", err);
       }
@@ -377,12 +552,7 @@
 
     fetchStatus();
     fetchLive();
-    setInterval(() => {
-      if (!document.hidden) {
-        fetchLive();
-        fetchStatus();
-      }
-    }, 1000);
+    setInterval(() => { if (!document.hidden) { fetchLive(); fetchStatus(); } }, 1000);
   </script>
 </body>
 </html>

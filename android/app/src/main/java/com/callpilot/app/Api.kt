@@ -27,7 +27,11 @@ data class Medicine(
 data class Rx(
     val condition: String,
     val medicines: List<Medicine> = emptyList(),
-    val advice: List<String> = emptyList()
+    val advice: List<String> = emptyList(),
+    val ayurvedic: List<Medicine> = emptyList(),
+    val homeopathic: List<Medicine> = emptyList(),
+    val homeRemedies: List<String> = emptyList(),
+    val seeDoctorIf: List<String> = emptyList()
 )
 
 data class Turn(
@@ -35,7 +39,8 @@ data class Turn(
     val state: String,
     val bookingId: String? = null,
     val pdfUrl: String? = null,
-    val rx: Rx? = null
+    val rx: Rx? = null,
+    val fields: Map<String, String> = emptyMap()
 )
 
 data class Booking(
@@ -54,7 +59,8 @@ data class Booking(
     val symptoms: String,
     val createdAt: String,
     val bookingId: String,
-    val pdfUrl: String
+    val pdfUrl: String,
+    val rx: Rx? = null
 )
 
 class Api(var baseUrl: String) {
@@ -119,39 +125,27 @@ class Api(var baseUrl: String) {
         )
     }
 
-    private fun parseRx(obj: JSONObject): Rx? {
+    private fun str(o: JSONObject, key: String): String =
+        if (o.isNull(key)) "" else o.optString(key, "")
+
+    private fun medicines(arr: JSONArray?): List<Medicine> =
+        (0 until (arr?.length() ?: 0)).mapNotNull { arr!!.optJSONObject(it) }.map {
+            Medicine(str(it, "name"), str(it, "strength"), str(it, "dose"), str(it, "frequency"), str(it, "days"))
+        }
+
+    private fun strings(arr: JSONArray?): List<String> =
+        (0 until (arr?.length() ?: 0)).map { arr!!.optString(it, "") }.filter { it.isNotEmpty() && it != "null" }
+
+    fun parseRx(obj: JSONObject): Rx? {
         val rxObj = obj.optJSONObject("rx") ?: return null
-        val condition = rxObj.optString("condition", "")
-        val medicines = mutableListOf<Medicine>()
-        val medsArr = rxObj.optJSONArray("medicines")
-        if (medsArr != null) {
-            for (i in 0 until medsArr.length()) {
-                val medObj = medsArr.optJSONObject(i) ?: continue
-                val name = medObj.optString("name", "")
-                val strength = if (!medObj.isNull("strength")) medObj.optString("strength", "") else ""
-                val dose = if (!medObj.isNull("dose")) medObj.optString("dose", "") else ""
-                val frequency = if (!medObj.isNull("frequency")) medObj.optString("frequency", "") else ""
-                val days = if (!medObj.isNull("days")) {
-                    val d = medObj.opt("days")
-                    if (d == null || d == JSONObject.NULL) "" else d.toString()
-                } else ""
-                medicines.add(Medicine(name = name, strength = strength, dose = dose, frequency = frequency, days = days))
-            }
-        }
-        val advice = mutableListOf<String>()
-        val adviceArr = rxObj.optJSONArray("advice")
-        if (adviceArr != null) {
-            for (i in 0 until adviceArr.length()) {
-                val item = adviceArr.optString(i, "")
-                if (item.isNotEmpty() && item != "null") {
-                    advice.add(item)
-                }
-            }
-        }
         return Rx(
-            condition = condition,
-            medicines = medicines,
-            advice = advice
+            condition = rxObj.optString("condition", ""),
+            medicines = medicines(rxObj.optJSONArray("medicines")),
+            advice = strings(rxObj.optJSONArray("advice")),
+            ayurvedic = medicines(rxObj.optJSONArray("ayurvedic")),
+            homeopathic = medicines(rxObj.optJSONArray("homeopathic")),
+            homeRemedies = strings(rxObj.optJSONArray("home_remedies")),
+            seeDoctorIf = strings(rxObj.optJSONArray("see_doctor_if"))
         )
     }
 
@@ -177,12 +171,15 @@ class Api(var baseUrl: String) {
         val bookingId = if (obj.has("booking_id") && !obj.isNull("booking_id")) obj.getString("booking_id") else null
         val pdfUrl = if (obj.has("pdf_url") && !obj.isNull("pdf_url")) obj.getString("pdf_url") else null
         val rx = parseRx(obj)
+        val fieldsObj = obj.optJSONObject("fields")
+        val fields = fieldsObj?.keys()?.asSequence()?.associateWith { str(fieldsObj, it) } ?: emptyMap()
         Turn(
             reply = reply,
             state = state,
             bookingId = bookingId,
             pdfUrl = pdfUrl,
-            rx = rx
+            rx = rx,
+            fields = fields
         )
     }
 
@@ -238,7 +235,22 @@ class Api(var baseUrl: String) {
             symptoms = obj.optString("symptoms", ""),
             createdAt = obj.optString("created_at", ""),
             bookingId = bookingId,
-            pdfUrl = pdfUrl
+            pdfUrl = pdfUrl,
+            rx = parseRx(obj)
         )
+    }
+
+    /** /api/status for the dialer's info panel; null when the server is unreachable. */
+    suspend fun status(): JSONObject? = withContext(Dispatchers.IO) {
+        try {
+            val conn = openConnection("/api/status", "GET")
+            conn.connectTimeout = 2000
+            conn.readTimeout = 3000
+            val text = if (conn.responseCode in 200..299) conn.inputStream.bufferedReader().use { it.readText() } else null
+            conn.disconnect()
+            text?.let { JSONObject(it) }
+        } catch (_: Exception) {
+            null
+        }
     }
 }

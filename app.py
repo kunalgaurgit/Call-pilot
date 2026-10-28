@@ -349,6 +349,9 @@ def rx_pdf(record: dict, business: str) -> bytes:
         ("Patient Name", fields.get("patient_name", "")),
         ("Age / Gender", f"{fields.get('age', '')} / {fields.get('gender', '')}"),
         ("Symptoms", fields.get("symptoms", "")),
+        ("History", fields.get("symptom_details", "")),
+        ("Other Symptoms", fields.get("associated_symptoms", "")),
+        ("Tried So Far", fields.get("tried_so_far", "-")),
         ("Duration / Severity", f"{fields.get('duration_days', '')} day{'' if str(fields.get('duration_days')) == '1' else 's'} / {fields.get('severity', '')}"),
         ("Known Allergies", fields.get("allergies", "None")),
         ("Current Medicines", fields.get("current_medicines", "None")),
@@ -356,34 +359,39 @@ def rx_pdf(record: dict, business: str) -> bytes:
     ]
     for label, val in info_rows:
         pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(48, 7, clean(label) + ":")
+        pdf.cell(48, 6, clean(label) + ":")
         pdf.set_font("Helvetica", "", 11)
-        pdf.multi_cell(0, 7, clean(val), new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(0, 6, clean(val), new_x="LMARGIN", new_y="NEXT")
 
     pdf.ln(4)
 
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Prescribed Medicines:", new_x="LMARGIN", new_y="NEXT")
+    sections = [
+        ("Allopathic Medicines (OTC)", rx.get("medicines", [])),
+        ("Ayurvedic Option", rx.get("ayurvedic", [])),
+        ("Homeopathic Option", rx.get("homeopathic", [])),
+    ]
+    for title, meds in sections:
+        if not meds:
+            continue
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, title + ":", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+        with pdf.table(col_widths=(55, 50, 55, 30), text_align="LEFT", line_height=5) as table:
+            table.row(["Medicine & Strength", "Dose", "Frequency", "Duration"])
+            for med in meds:
+                table.row([clean(f"{med.get('name', '')} {med.get('strength', '')}".strip()),
+                           clean(med.get("dose", "")), clean(med.get("frequency", "")),
+                           f"{med['days']} days" if med.get("days") else ""])
+        pdf.ln(2)
 
-    col_w = [65, 30, 65, 30]
-    headers = ["Medicine & Strength", "Dose", "Frequency", "Duration"]
-    pdf.set_font("Helvetica", "B", 10)
-    for w, h in zip(col_w, headers):
-        pdf.cell(w, 7, clean(h), border=1, align="C")
-    pdf.ln()
-
-    pdf.set_font("Helvetica", "", 10)
-    meds = rx.get("medicines", [])
-    for med in meds:
-        name_str = f"{med.get('name', '')} {med.get('strength', '')}".strip()
-        dose_str = str(med.get("dose", ""))
-        freq_str = str(med.get("frequency", ""))
-        days_str = f"{med.get('days', '')} days" if med.get("days") else ""
-        pdf.cell(col_w[0], 7, clean(name_str), border=1)
-        pdf.cell(col_w[1], 7, clean(dose_str), border=1, align="C")
-        pdf.cell(col_w[2], 7, clean(freq_str), border=1)
-        pdf.cell(col_w[3], 7, clean(days_str), border=1, align="C")
-        pdf.ln()
+    home = rx.get("home_remedies", [])
+    if home:
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 7, "Home Remedies (Gharelu Upay):", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        for item in home:
+            pdf.multi_cell(0, 5, clean(f"- {item}"), new_x="LMARGIN", new_y="NEXT")
 
     advice_list = rx.get("advice", [])
     if advice_list:
@@ -392,7 +400,7 @@ def rx_pdf(record: dict, business: str) -> bytes:
         pdf.cell(0, 7, "Advice & Home Care:", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 10)
         for item in advice_list:
-            pdf.multi_cell(0, 6, clean(f"- {item}"), new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(0, 5, clean(f"- {item}"), new_x="LMARGIN", new_y="NEXT")
 
     doctor_if = rx.get("see_doctor_if", [])
     if doctor_if:
@@ -401,11 +409,13 @@ def rx_pdf(record: dict, business: str) -> bytes:
         pdf.cell(0, 7, "Consult a Doctor Immediately If:", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 10)
         for item in doctor_if:
-            pdf.multi_cell(0, 6, clean(f"- {item}"), new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(0, 5, clean(f"- {item}"), new_x="LMARGIN", new_y="NEXT")
 
     pdf.ln(6)
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(0, 8, "AI-generated college demo - NOT a real prescription. Consult a doctor or pharmacist.", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.cell(0, 5, "Take ONE system at a time. Ayurvedic and homeopathic options are traditional remedies with limited clinical evidence.", new_x="LMARGIN", new_y="NEXT", align="C")
 
     return bytes(pdf.output())
 
