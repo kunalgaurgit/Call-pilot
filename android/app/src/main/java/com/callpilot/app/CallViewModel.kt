@@ -65,6 +65,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
 
     private var timerJob: Job? = null
     private var missCount = 0
+    private var turnFails = 0
     private var currentSessionId: String? = null
 
     init {
@@ -154,6 +155,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             muted = false
             speaker = false
             missCount = 0
+            turnFails = 0
             currentSessionId = null
             voice.setSpeaker(false)
             startTimer()
@@ -239,6 +241,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val turn = api.turn(sid, text)
+                turnFails = 0
                 agentLine = turn.reply
                 val isDone = turn.state == "done"
                 val isEscalated = turn.state == "escalated"
@@ -262,8 +265,16 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     speakAgent(turn.reply)
                 }
-            } catch (_: Exception) {
-                speakAgent("Sorry, the line is not clear. Please say that again.")
+            } catch (e: Exception) {
+                turnFails++
+                when {
+                    turnFails >= 3 -> {
+                        api.hangup(sid)
+                        endCallInternal(if (e is ServerUnreachable) "Call ended - cannot reach the server. Check the Wi-Fi." else "Call ended - server error")
+                    }
+                    e is ServerUnreachable -> speakAgent("Sorry, I cannot reach the server. Please check that the phone and laptop are on the same Wi-Fi, then say that again.")
+                    else -> speakAgent("Sorry, something went wrong on my side. Please say that again.")
+                }
             }
         }
     }

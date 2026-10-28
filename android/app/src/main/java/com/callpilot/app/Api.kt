@@ -8,6 +8,8 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
+class ServerUnreachable(cause: IOException) : IOException("Cannot reach the server", cause)
+
 data class Start(
     val sessionId: String,
     val greeting: String,
@@ -64,10 +66,30 @@ class Api(var baseUrl: String) {
         val path = if (endpoint.startsWith("/")) endpoint else "/$endpoint"
         val url = URL("$base$path")
         val conn = url.openConnection() as HttpURLConnection
-        conn.connectTimeout = 3000
+        // 8 s: a phone waking its Wi-Fi from power-save can take several seconds to connect
+        conn.connectTimeout = 8000
         conn.readTimeout = 25000
         conn.requestMethod = method
         return conn
+    }
+
+    // Only the connect step is retried: nothing has been sent yet, so the server never runs a turn twice.
+    private fun openPostWithRetry(endpoint: String): HttpURLConnection {
+        var last: IOException? = null
+        for (attempt in 1..3) {
+            val conn = openConnection(endpoint, "POST")
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            try {
+                conn.connect()
+                return conn
+            } catch (e: IOException) {
+                conn.disconnect()
+                last = e
+                if (attempt < 3) Thread.sleep(1000L * attempt)
+            }
+        }
+        throw ServerUnreachable(last!!)
     }
 
     suspend fun startCall(): Start = withContext(Dispatchers.IO) {
@@ -134,9 +156,7 @@ class Api(var baseUrl: String) {
     }
 
     suspend fun turn(sid: String, text: String): Turn = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/call/$sid/turn", "POST")
-        conn.doOutput = true
-        conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        val conn = openPostWithRetry("/api/call/$sid/turn")
         val body = JSONObject().apply {
             put("text", text)
         }
