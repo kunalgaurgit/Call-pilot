@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,9 +21,9 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -81,27 +82,32 @@ val Icons.Filled.Call: ImageVector
     }
 private var _callVector: ImageVector? = null
 
-// Classic "hospital terminal" palette: grey bevelled panels, navy title bars, LED colours.
-private val Desk = Color(0xFFD4D0C8)
-private val PanelBg = Color(0xFFECE9D8)
-private val Shadow = Color(0xFF808080)
-private val Navy = Color(0xFF0A246A)
-private val NavyLight = Color(0xFF3A6EA5)
-private val Ink = Color(0xFF111111)
-private val Muted = Color(0xFF555555)
-private val Green = Color(0xFF0B8A2E)
-private val Red = Color(0xFFB91C1C)
-private val Amber = Color(0xFFB45309)
+// Original Call Pilot dark theme: slate background, rounded cards, green primary.
+private val Desk = Color(0xFF0F172A)
+private val PanelBg = Color(0xFF1E293B)
+private val Shadow = Color(0xFF334155)
+private val Well = Color(0xFF0B1220)
+private val Navy = Color(0xFF3B82F6)
+private val Slate = Color(0xFF64748B)
+private val Ink = Color(0xFFF8FAFC)
+private val Muted = Color(0xFF94A3B8)
+private val Green = Color(0xFF16A34A)
+private val Red = Color(0xFFDC2626)
+private val Amber = Color(0xFFF59E0B)
 private val Mono = FontFamily.Monospace
+private val Round = RoundedCornerShape(14.dp)
+private val RoundSmall = RoundedCornerShape(10.dp)
 
-val CallPilotLightScheme = lightColorScheme(
-    primary = Navy,
+val CallPilotDarkScheme = darkColorScheme(
+    primary = Green,
     onPrimary = Color.White,
+    primaryContainer = Color(0xFF14532D),
+    onPrimaryContainer = Color(0xFFDCFCE7),
     background = Desk,
     onBackground = Ink,
     surface = PanelBg,
     onSurface = Ink,
-    surfaceVariant = Desk,
+    surfaceVariant = Shadow,
     onSurfaceVariant = Muted,
     error = Red,
     onError = Color.White
@@ -109,7 +115,7 @@ val CallPilotLightScheme = lightColorScheme(
 
 @Composable
 fun CallPilotTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = CallPilotLightScheme, content = content)
+    MaterialTheme(colorScheme = CallPilotDarkScheme, content = content)
 }
 
 fun formatSpokenDate(dateStr: String): String {
@@ -171,56 +177,54 @@ private val CASE_FIELDS = listOf(
 // ---------- building blocks ----------
 
 @Composable
-private fun Bevel(modifier: Modifier = Modifier, pressed: Boolean = false, content: @Composable BoxScope.() -> Unit) {
-    Box(
-        modifier
-            .border(1.dp, if (pressed) Shadow else Color.White)
-            .padding(1.dp)
-            .border(1.dp, if (pressed) Color.White else Shadow),
-        content = content
-    )
+private fun Bevel(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    Box(modifier.clip(RoundSmall).border(1.dp, Shadow, RoundSmall), content = content)
 }
 
 @Composable
 private fun TitleBar(text: String, right: String = "", onBack: (() -> Unit)? = null) {
     Row(
-        Modifier
-            .fillMaxWidth()
-            .background(Brush.horizontalGradient(listOf(Navy, NavyLight)))
-            .padding(horizontal = 6.dp, vertical = 5.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (onBack != null) {
-            RetroButton("< BACK", onClick = onBack, fontSize = 10.sp, height = 24.dp)
-            Spacer(Modifier.width(6.dp))
+            RetroButton("< Back", onClick = onBack, fontSize = 12.sp, height = 34.dp)
+            Spacer(Modifier.width(10.dp))
         }
-        Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (right.isNotEmpty()) Text(right, color = Color(0xFFE0E7FF), fontSize = 11.sp, fontFamily = Mono)
+        Text(text, color = Ink, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (right.isNotEmpty()) {
+            Text(right, color = Muted, fontSize = 12.sp, fontFamily = Mono,
+                modifier = Modifier.clip(CircleShape).background(PanelBg).padding(horizontal = 10.dp, vertical = 4.dp))
+        }
     }
 }
 
 @Composable
 private fun Panel(title: String, modifier: Modifier = Modifier, accent: Color = Navy, content: @Composable ColumnScope.() -> Unit) {
-    Bevel(modifier.padding(vertical = 3.dp)) {
-        Column(Modifier.fillMaxWidth().background(PanelBg)) {
-            Text(
-                title.uppercase(),
-                color = Color.White,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                modifier = Modifier.fillMaxWidth().background(accent).padding(horizontal = 6.dp, vertical = 2.dp)
-            )
-            Column(Modifier.padding(6.dp), content = content)
+    Column(
+        modifier
+            .padding(vertical = 4.dp)
+            .fillMaxWidth()
+            .clip(Round)
+            .background(PanelBg)
+            .border(1.dp, Shadow, Round)
+            .padding(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).background(accent, CircleShape))
+            Spacer(Modifier.width(6.dp))
+            Text(title.uppercase(), color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         }
+        Spacer(Modifier.height(8.dp))
+        content()
     }
 }
 
 @Composable
 private fun KV(label: String, value: String, valueColor: Color = Ink) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
-        Text("$label:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted, modifier = Modifier.width(110.dp))
-        Text(value.ifEmpty { "---" }, fontSize = 11.sp, fontFamily = Mono, color = if (value.isEmpty()) Shadow else valueColor)
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Text(label, fontSize = 12.sp, color = Muted, modifier = Modifier.width(112.dp))
+        Text(value.ifEmpty { "-" }, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if (value.isEmpty()) Slate else valueColor)
     }
 }
 
@@ -228,33 +232,36 @@ private fun KV(label: String, value: String, valueColor: Color = Ink) {
 private fun RetroButton(
     text: String,
     modifier: Modifier = Modifier,
-    color: Color = Desk,
+    color: Color = Shadow,
     textColor: Color = Ink,
-    fontSize: TextUnit = 12.sp,
-    height: Dp = 40.dp,
+    fontSize: TextUnit = 13.sp,
+    height: Dp = 44.dp,
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    Bevel(modifier.height(height)) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(if (enabled) color else Desk)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 8.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text, color = if (enabled) textColor else Shadow, fontSize = fontSize, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2)
-        }
+    Box(
+        modifier
+            .height(height)
+            .clip(RoundSmall)
+            .background(if (enabled) color else PanelBg)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = if (enabled) textColor else Slate, fontSize = fontSize, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 2)
     }
 }
 
 @Composable
 private fun Led(label: String, on: Boolean, color: Color, modifier: Modifier = Modifier) {
-    Row(modifier.border(1.dp, Shadow).background(Color(0xFF1F1F1F)).padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).background(if (on) color else Color(0xFF3F3F3F), CircleShape))
+    Row(
+        modifier.clip(CircleShape).background(if (on) color.copy(alpha = 0.18f) else PanelBg).padding(horizontal = 6.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Box(Modifier.size(7.dp).background(if (on) color else Shadow, CircleShape))
         Spacer(Modifier.width(4.dp))
-        Text(label, fontSize = 9.sp, fontFamily = Mono, color = if (on) Color.White else Color(0xFF8A8A8A))
+        Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = if (on) Ink else Slate)
     }
 }
 
@@ -263,21 +270,23 @@ private fun Led(label: String, on: Boolean, color: Color, modifier: Modifier = M
 private fun Ticker(text: String) {
     Text(
         text,
-        color = Color(0xFFFFEB3B),
-        fontFamily = Mono,
-        fontSize = 11.sp,
+        color = Color(0xFFFDE68A),
+        fontSize = 12.sp,
         maxLines = 1,
-        modifier = Modifier.fillMaxWidth().background(Color.Black).padding(vertical = 3.dp).basicMarquee(iterations = Int.MAX_VALUE)
+        modifier = Modifier
+            .padding(horizontal = 12.dp)
+            .fillMaxWidth()
+            .clip(CircleShape)
+            .background(Color(0xFF422006))
+            .padding(vertical = 5.dp)
+            .basicMarquee(iterations = Int.MAX_VALUE)
     )
 }
 
 @Composable
 private fun StatusStrip(text: String) {
-    Row(
-        Modifier.fillMaxWidth().background(Desk).border(1.dp, Shadow).padding(horizontal = 6.dp, vertical = 3.dp)
-    ) {
-        Text(text, fontSize = 9.sp, fontFamily = Mono, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+    Text(text, fontSize = 10.sp, color = Slate, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))
 }
 
 @Composable
@@ -294,15 +303,15 @@ private fun clock(pattern: String): String {
 
 @Composable
 private fun MedTable(meds: List<Medicine>) {
-    Column(Modifier.fillMaxWidth().border(1.dp, Shadow)) {
-        Row(Modifier.background(Desk).padding(3.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundSmall).border(1.dp, Shadow, RoundSmall)) {
+        Row(Modifier.background(Shadow).padding(6.dp)) {
             Text("MEDICINE", Modifier.weight(1.3f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
             Text("DOSE / WHEN", Modifier.weight(1.7f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
             Text("DAYS", Modifier.weight(0.5f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
         meds.forEach { m ->
             HorizontalDivider(color = Shadow, thickness = 0.5.dp)
-            Row(Modifier.padding(3.dp)) {
+            Row(Modifier.padding(6.dp)) {
                 Text("${m.name} ${m.strength}".trim(), Modifier.weight(1.3f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                 Text(listOf(m.dose, m.frequency).filter { it.isNotEmpty() }.joinToString(", "), Modifier.weight(1.7f), fontSize = 10.sp)
                 Text(m.days, Modifier.weight(0.5f), fontSize = 10.sp, fontFamily = Mono)
@@ -313,7 +322,7 @@ private fun MedTable(meds: List<Medicine>) {
 
 @Composable
 private fun Bullets(items: List<String>) {
-    items.forEach { Text("> $it", fontSize = 11.sp, color = Ink, modifier = Modifier.padding(vertical = 1.dp)) }
+    items.forEach { Text("\u2022  $it", fontSize = 12.sp, color = Ink, modifier = Modifier.padding(vertical = 1.dp)) }
 }
 
 @Composable
@@ -322,7 +331,8 @@ private fun Screenful(content: @Composable ColumnScope.() -> Unit) {
         Modifier
             .fillMaxSize()
             .background(Desk)
-            .systemBarsPadding(),
+            .systemBarsPadding()
+            .padding(top = 4.dp),
         content = content
     )
 }
@@ -340,8 +350,8 @@ fun DialerScreen(viewModel: CallViewModel, onCallClick: () -> Unit) {
     Screenful {
         TitleBar("AI DOCTOR :: TELE-CONSULTATION TERMINAL", "v${BuildConfig.VERSION_NAME}")
         Ticker("*** EMERGENCY? DIAL 108 ***   24x7 AI HEALTH CONSULTATION   ***   ALLOPATHY + AYURVEDA + HOMEOPATHY + GHARELU UPAY   ***   HINDI / ENGLISH SUPPORTED   ***   TIP: $tip   ***   COLLEGE DEMO - NOT A REAL DOCTOR   ***")
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(6.dp)) {
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp)) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Panel("System status", Modifier.weight(1.2f).fillMaxHeight()) {
                     KV("Server", when (viewModel.serverState) {
                         "Connected" -> "ONLINE"
@@ -354,9 +364,9 @@ fun DialerScreen(viewModel: CallViewModel, onCallClick: () -> Unit) {
                     KV("Model", info?.optString("model")?.substringBefore(",") ?: "")
                     KV("Active calls", info?.optInt("active_calls")?.toString() ?: "")
                 }
-                Panel("Clock", Modifier.weight(0.8f).fillMaxHeight(), accent = Color(0xFF374151)) {
+                Panel("Clock", Modifier.weight(0.8f).fillMaxHeight(), accent = Slate) {
                     Text(clock("HH:mm:ss"), fontFamily = Mono, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Green,
-                        modifier = Modifier.fillMaxWidth().background(Color.Black).padding(4.dp), textAlign = TextAlign.Center)
+                        modifier = Modifier.fillMaxWidth().clip(RoundSmall).background(Well).padding(6.dp), textAlign = TextAlign.Center)
                     Spacer(Modifier.height(4.dp))
                     Text(clock("EEE, dd MMM yyyy"), fontSize = 11.sp, fontFamily = Mono)
                     Text("OPD: 24 x 7", fontSize = 11.sp, fontFamily = Mono)
@@ -366,17 +376,17 @@ fun DialerScreen(viewModel: CallViewModel, onCallClick: () -> Unit) {
             }
 
             Panel("Start consultation", accent = Green) {
-                RetroButton("[ CALL ]  START AI DOCTOR CONSULTATION", Modifier.fillMaxWidth(), color = Green, textColor = Color.White, fontSize = 14.sp, height = 56.dp, onClick = onCallClick)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                RetroButton("Start AI doctor consultation", Modifier.fillMaxWidth(), color = Green, textColor = Color.White, fontSize = 14.sp, height = 56.dp, onClick = onCallClick)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RetroButton("MY PRESCRIPTIONS", Modifier.weight(1f), fontSize = 10.sp) {
                         viewModel.loadAppointments()
                         viewModel.screen = Screen.APPOINTMENTS
                     }
                     RetroButton("SETTINGS", Modifier.weight(1f), fontSize = 10.sp) { viewModel.screen = Screen.SETTINGS }
                 }
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RetroButton("EMERGENCY 108", Modifier.weight(1f), color = Red, textColor = Color.White, fontSize = 10.sp) {
                         try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:108"))) } catch (_: Exception) {}
                     }
@@ -386,9 +396,9 @@ fun DialerScreen(viewModel: CallViewModel, onCallClick: () -> Unit) {
 
             Panel("Treatment systems available") {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("ALLOPATHY" to Color(0xFF1D4ED8), "AYURVEDA" to Color(0xFF15803D), "HOMEOPATHY" to Color(0xFF7E22CE), "GHARELU UPAY" to Amber).forEach { (name, c) ->
-                        Text(name, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
-                            modifier = Modifier.weight(1f).background(c).border(1.dp, Ink).padding(vertical = 5.dp))
+                    listOf("ALLOPATHY" to Color(0xFF60A5FA), "AYURVEDA" to Color(0xFF4ADE80), "HOMEOPATHY" to Color(0xFFC084FC), "GHARELU UPAY" to Amber).forEach { (name, c) ->
+                        Text(name, color = c, fontSize = 9.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f).clip(RoundSmall).background(c.copy(alpha = 0.15f)).padding(vertical = 8.dp))
                     }
                 }
             }
@@ -404,7 +414,7 @@ fun DialerScreen(viewModel: CallViewModel, onCallClick: () -> Unit) {
                 Text("Chest pain, breathlessness, fainting, bleeding -> call 108, not this line.", fontSize = 10.sp, color = Red, fontWeight = FontWeight.Bold)
             }
 
-            Panel("How it works", accent = Color(0xFF374151)) {
+            Panel("How it works", accent = Slate) {
                 listOf(
                     "1. Tap CALL and describe your problem (Hindi or English).",
                     "2. AI doctor takes your history like a real doctor.",
@@ -439,28 +449,28 @@ fun InCallScreen(viewModel: CallViewModel) {
 
     Screenful {
         TitleBar("CONSULTATION IN PROGRESS  * REC", timer)
-        Row(Modifier.fillMaxWidth().background(Color(0xFF2B2B2B)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Led("MIC", status == "Listening", Green, Modifier.weight(1f))
             Led("AI", status == "Thinking", Amber, Modifier.weight(1f))
             Led("TTS", status == "Speaking", Color(0xFF38BDF8), Modifier.weight(1f))
             Led("NET", viewModel.serverState == "Connected", Green, Modifier.weight(1f))
             Led("MUTE", viewModel.muted, Red, Modifier.weight(1f))
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(6.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp)) {
             Panel("Consultation stage") {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     listOf("COMPLAINT", "HISTORY", "PATIENT", "CONFIRM", "Rx").forEachIndexed { i, s ->
                         Text(s, fontSize = 8.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
                             color = if (i <= stage) Color.White else Muted,
-                            modifier = Modifier.weight(1f).background(if (i < stage) Green else if (i == stage) Navy else Desk).border(1.dp, Shadow).padding(vertical = 4.dp))
+                            modifier = Modifier.weight(1f).clip(RoundSmall).background(if (i < stage) Green else if (i == stage) Navy else Shadow).padding(vertical = 6.dp))
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Panel("Audio monitor", Modifier.weight(1f), accent = Color(0xFF374151)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Panel("Audio monitor", Modifier.weight(1f), accent = Slate) {
                     val levels = viewModel.micLevels
-                    val wave = if (status == "Listening") Color(0xFF22C55E) else Color(0xFF3F3F3F)
-                    Canvas(Modifier.fillMaxWidth().height(40.dp).background(Color.Black)) {
+                    val wave = if (status == "Listening") Color(0xFF22C55E) else Shadow
+                    Canvas(Modifier.fillMaxWidth().height(40.dp).clip(RoundSmall).background(Well)) {
                         val step = size.width / levels.size
                         levels.forEachIndexed { i, level ->
                             val half = maxOf(1f, level * size.height / 2)
@@ -471,7 +481,7 @@ fun InCallScreen(viewModel: CallViewModel) {
                     Text("STATUS: ${status.uppercase()}", fontSize = 10.sp, fontFamily = Mono, fontWeight = FontWeight.Bold)
                     Text("SPK: ${if (viewModel.speaker) "LOUD" else "EARPIECE"}", fontSize = 10.sp, fontFamily = Mono)
                 }
-                Panel("Patient", Modifier.weight(1f), accent = Color(0xFF374151)) {
+                Panel("Patient", Modifier.weight(1f), accent = Slate) {
                     Text(sheet["patient_name"] ?: "UNREGISTERED", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text("${sheet["age"] ?: "--"} yrs / ${sheet["gender"] ?: "--"}", fontSize = 10.sp, fontFamily = Mono)
                     Text("Severity: ${(sheet["severity"] ?: "pending").uppercase()}", fontSize = 10.sp, fontFamily = Mono,
@@ -489,18 +499,18 @@ fun InCallScreen(viewModel: CallViewModel) {
             Panel("Live case sheet") {
                 CASE_FIELDS.forEach { (key, label) -> KV(label, sheet[key] ?: "") }
             }
-            Panel("Transcript log", accent = Color(0xFF374151)) {
-                Column(Modifier.fillMaxWidth().height(150.dp).background(Color.Black).verticalScroll(logScroll).padding(4.dp)) {
+            Panel("Transcript log", accent = Slate) {
+                Column(Modifier.fillMaxWidth().height(150.dp).clip(RoundSmall).background(Well).verticalScroll(logScroll).padding(8.dp)) {
                     viewModel.log.forEach { (who, text) ->
                         Text("[$who] $text", fontSize = 10.sp, fontFamily = Mono, color = if (who == "AI") Color(0xFF4ADE80) else Color(0xFFFDE047))
                     }
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().background(Desk).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            RetroButton(if (viewModel.muted) "UNMUTE" else "MUTE", Modifier.weight(1f), color = if (viewModel.muted) Amber else Desk,
+        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RetroButton(if (viewModel.muted) "UNMUTE" else "MUTE", Modifier.weight(1f), color = if (viewModel.muted) Amber else Shadow,
                 textColor = if (viewModel.muted) Color.White else Ink, height = 52.dp) { viewModel.toggleMute() }
-            RetroButton(if (viewModel.speaker) "SPEAKER ON" else "SPEAKER", Modifier.weight(1f), color = if (viewModel.speaker) Navy else Desk,
+            RetroButton(if (viewModel.speaker) "SPEAKER ON" else "SPEAKER", Modifier.weight(1f), color = if (viewModel.speaker) Navy else Shadow,
                 textColor = if (viewModel.speaker) Color.White else Ink, height = 52.dp) { viewModel.toggleSpeaker() }
             Bevel(Modifier.weight(1.2f).height(52.dp)) {
                 Row(Modifier.fillMaxSize().background(Red).clickable { viewModel.endCall() }, horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -529,7 +539,7 @@ fun EndedScreen(viewModel: CallViewModel, onDone: () -> Unit) {
 
     Screenful {
         TitleBar("CONSULTATION SUMMARY", "%02d:%02d".format(viewModel.seconds / 60, viewModel.seconds % 60))
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(6.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp)) {
             when {
                 !ended.bookingId.isNullOrEmpty() -> {
                     val isRx = ended.bookingId.startsWith("RX-")
@@ -544,23 +554,23 @@ fun EndedScreen(viewModel: CallViewModel, onDone: () -> Unit) {
                         KV("Issued", LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", Locale.ENGLISH)))
                     }
                     if (rx != null) {
-                        if (rx.medicines.isNotEmpty()) Panel("1. Allopathic (OTC)", accent = Color(0xFF1D4ED8)) { MedTable(rx.medicines) }
-                        if (rx.ayurvedic.isNotEmpty()) Panel("2. Ayurvedic option", accent = Color(0xFF15803D)) { MedTable(rx.ayurvedic) }
-                        if (rx.homeopathic.isNotEmpty()) Panel("3. Homeopathic option", accent = Color(0xFF7E22CE)) { MedTable(rx.homeopathic) }
+                        if (rx.medicines.isNotEmpty()) Panel("1. Allopathic (OTC)", accent = Color(0xFF60A5FA)) { MedTable(rx.medicines) }
+                        if (rx.ayurvedic.isNotEmpty()) Panel("2. Ayurvedic option", accent = Color(0xFF4ADE80)) { MedTable(rx.ayurvedic) }
+                        if (rx.homeopathic.isNotEmpty()) Panel("3. Homeopathic option", accent = Color(0xFFC084FC)) { MedTable(rx.homeopathic) }
                         if (rx.homeRemedies.isNotEmpty()) Panel("4. Home remedies (gharelu upay)", accent = Amber) { Bullets(rx.homeRemedies) }
-                        if (rx.advice.isNotEmpty()) Panel("Advice", accent = Color(0xFF374151)) { Bullets(rx.advice) }
+                        if (rx.advice.isNotEmpty()) Panel("Advice", accent = Slate) { Bullets(rx.advice) }
                         if (rx.seeDoctorIf.isNotEmpty()) Panel("See a doctor immediately if", accent = Red) { Bullets(rx.seeDoctorIf) }
                         Text("Take ONE system at a time. AI college demo - not a real prescription.", fontSize = 10.sp, color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.padding(4.dp))
                     }
                 }
                 ended.emergency -> Panel("!!! Emergency !!!", accent = Red) {
                     Text(ended.message.ifEmpty { "Please dial 108 immediately." }, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Red)
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(8.dp))
                     RetroButton("DIAL 108 NOW", Modifier.fillMaxWidth(), color = Red, textColor = Color.White, height = 48.dp) {
                         try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:108"))) } catch (_: Exception) {}
                     }
                 }
-                else -> Panel("Call status", accent = Color(0xFF374151)) {
+                else -> Panel("Call status", accent = Slate) {
                     Text(ended.message.ifEmpty { "Call ended" }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
@@ -570,12 +580,12 @@ fun EndedScreen(viewModel: CallViewModel, onDone: () -> Unit) {
                 }
             }
             if (viewModel.log.isNotEmpty()) {
-                Panel("Call transcript (${viewModel.log.size} lines)", accent = Color(0xFF374151)) {
+                Panel("Call transcript (${viewModel.log.size} lines)", accent = Slate) {
                     viewModel.log.forEach { (who, text) -> Text("[$who] $text", fontSize = 10.sp, fontFamily = Mono) }
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!ended.pdfUrl.isNullOrEmpty()) {
                 RetroButton("OPEN PDF", Modifier.weight(1f), color = Green, textColor = Color.White, height = 48.dp) {
                     openUrl(context, formatFullPdfUrl(viewModel.serverUrl, ended.pdfUrl))
@@ -591,7 +601,7 @@ fun AppointmentsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     Screenful {
         TitleBar("MY PRESCRIPTIONS / RECORDS", "${viewModel.appointments.size} found", onBack = onBack)
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(6.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp)) {
             if (viewModel.appointments.isEmpty()) {
                 Panel("No records") { Text("No prescriptions yet. Complete a consultation to see it here.", fontSize = 12.sp) }
             }
@@ -636,16 +646,17 @@ fun SettingsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
 
     Screenful {
         TitleBar("SETTINGS / CONTROL PANEL", onBack = onBack)
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(6.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp)) {
             Panel("Server connection") {
                 Text("Server URL:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                Bevel(Modifier.fillMaxWidth(), pressed = true) {
+                Bevel(Modifier.fillMaxWidth()) {
                     BasicTextField(
                         value = urlText,
                         onValueChange = { urlText = it },
                         singleLine = true,
-                        textStyle = UiTextStyle(fontFamily = Mono, fontSize = 13.sp, color = Ink),
-                        modifier = Modifier.fillMaxWidth().background(Color.White).padding(6.dp)
+                        textStyle = UiTextStyle(fontFamily = Mono, fontSize = 14.sp, color = Ink),
+                        cursorBrush = SolidColor(Green),
+                        modifier = Modifier.fillMaxWidth().background(Desk).padding(10.dp)
                     )
                 }
                 Text("e.g. http://192.168.137.1:8001", fontSize = 10.sp, color = Muted)
@@ -655,16 +666,16 @@ fun SettingsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
                     "Searching" -> Amber
                     else -> Red
                 })
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RetroButton("FIND AUTOMATICALLY", Modifier.weight(1f), fontSize = 10.sp) { viewModel.retrySearch() }
                     RetroButton("SAVE", Modifier.weight(1f), color = Green, textColor = Color.White) { viewModel.saveServerUrl(urlText) }
                 }
             }
 
-            Panel("Software update", accent = Color(0xFF374151)) {
+            Panel("Software update", accent = Slate) {
                 Text(updateMsg, fontSize = 12.sp, fontFamily = Mono)
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 RetroButton(
                     when {
                         apkFile != null -> "INSTALL UPDATE"
@@ -706,7 +717,7 @@ fun SettingsScreen(viewModel: CallViewModel, onBack: () -> Unit) {
                 }
             }
 
-            Panel("About this device", accent = Color(0xFF374151)) {
+            Panel("About this device", accent = Slate) {
                 KV("App", "Call Pilot AI Doctor")
                 KV("Version", "${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})")
                 KV("Device", "${Build.MANUFACTURER} ${Build.MODEL}")
