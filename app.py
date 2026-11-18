@@ -23,7 +23,7 @@ from llm import DEFAULT_MODELS, cooling_models, make_llm
 
 # The Android app gives up on a turn after 25 s; answer (even with an apology) before that.
 # Each Gemini request may take up to 10 s, so 20 s fits a tool call plus the spoken reply.
-TURN_BUDGET_S = 20
+TURN_BUDGET_S = 24  # two 12 s Gemini tries; must stay under the Android app's 25 s read timeout (Api.kt)
 
 logger = logging.getLogger("callpilot")
 

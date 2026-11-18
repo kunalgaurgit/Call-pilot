@@ -199,7 +199,7 @@ def _is_retryable(e: Exception) -> bool:
 class GeminiLLM:
     """Gemini LLM adapter using google-genai SDK."""
 
-    def __init__(self, api_key: str, model: str, timeout_s: float = 10, client=None, thinking: str | None = None):
+    def __init__(self, api_key: str, model: str, timeout_s: float = 12, client=None, thinking: str | None = None):
         self.api_key = api_key
         # time.monotonic() by which the current caller turn must be answered (set per turn by app.py); None = no limit.
         self.deadline: float | None = None
