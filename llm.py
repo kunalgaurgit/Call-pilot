@@ -192,7 +192,8 @@ def parse_response(response) -> LLMReply:
 def _is_retryable(e: Exception) -> bool:
     if isinstance(e, errors.APIError) and getattr(e, "code", None) in (429, 500, 503, 504):
         return True
-    return isinstance(e, _TIMEOUT_EXCEPTIONS)
+    # TransportError covers dropped connections (RemoteProtocolError, ConnectError), common on hotspots.
+    return isinstance(e, (*_TIMEOUT_EXCEPTIONS, httpx.TransportError))
 
 
 class GeminiLLM:
